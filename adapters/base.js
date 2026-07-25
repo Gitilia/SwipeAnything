@@ -9,7 +9,9 @@
  * never know what an adapter actually touches -- they only talk to this
  * interface.
  *
- * See CONTRIBUTING.md for a walkthrough of writing a new adapter.
+ * See CONTRIBUTING.md for a walkthrough of writing a new adapter, and
+ * adapters/folder.js (local files) / adapters/immich.js (remote API) for
+ * two different reference implementations.
  */
 class Adapter {
   /** Unique machine id, e.g. "folder". Stored in swipeanything.config.json. */
@@ -27,12 +29,14 @@ class Adapter {
    *   {
    *     key: string,
    *     label: string,
-   *     type: 'text' | 'checkbox' | 'number' | 'select',
+   *     type: 'text' | 'password' | 'checkbox' | 'number' | 'select' | 'folder',
    *     default?: any,
    *     options?: Array<{ value: string, label: string }>, // for type 'select'
    *     placeholder?: string,
    *     required?: boolean,
    *   }
+   * `type: 'folder'` renders a text field plus a "Browse..." button backed
+   * by a native folder picker where available (see server.js /api/browse-folder).
    */
   static configSchema = [];
 
@@ -94,13 +98,37 @@ class Adapter {
   }
 
   /**
-   * Optional: resolve an item id to an absolute file path so the
-   * /api/preview endpoint can stream it. Adapters without file-like
-   * previews (e.g. a future database-row adapter) can leave this as-is;
-   * the UI falls back to title/subtitle/meta only.
+   * Writes the full-size preview for `itemId` directly to the Express
+   * response (res.sendFile for local files, a piped fetch for remote
+   * APIs, etc). Return true if you wrote a response, false to let the
+   * server respond 404 (e.g. this item has no visual preview).
    */
-  async resolvePreviewPath(itemId) {
+  async streamPreview(itemId, res) {
+    return false;
+  }
+
+  /**
+   * Same as streamPreview, but for a smaller/faster thumbnail (used for
+   * the card image and as a video poster frame). Optional -- the default
+   * does nothing, and the frontend falls back to streamPreview.
+   */
+  async streamThumbnail(itemId, res) {
+    return false;
+  }
+
+  /**
+   * Optional: describes a reversible "trash" this adapter maintains, so
+   * the UI can offer an explicit, confirm-guarded "Empty trash" action.
+   * Return null if this adapter has no such concept.
+   * @returns {Promise<{ count: number, label: string } | null>}
+   */
+  async describeTrash() {
     return null;
+  }
+
+  /** Optional: permanently clears whatever describeTrash() described. */
+  async emptyTrash() {
+    throw new Error(`${this.constructor.name} does not support emptyTrash()`);
   }
 
   /** Optional short string describing the source, shown in the UI header. */

@@ -15,9 +15,12 @@
     </div>
   </header>
   <div class="source-label">Choose what to swipe through, and how.</div>
-  <div id="adapterList"></div>
+  <fieldset class="adapter-fieldset">
+    <legend class="sr-only">Adapter</legend>
+    <div id="adapterList"></div>
+  </fieldset>
   <form id="settingsForm"></form>
-  <div class="settings-error" id="settingsError"></div>
+  <div class="settings-error" id="settingsError" role="alert" aria-live="assertive"></div>
 </div>
 <script src="settings.js"></script>
 </body>

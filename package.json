@@ -4,7 +4,8 @@
   "description": "A local-first, pluggable swipe-to-triage UI. Point it at a folder today; write an adapter and point it at anything tomorrow.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test"
   },
   "license": "MIT",
   "author": "",

@@ -27,6 +27,10 @@
     return el.value;
   }
 
+  function escapeAttr(value) {
+    return String(value).replace(/"/g, '&quot;');
+  }
+
   function renderField(field) {
     const wrap = document.createElement('div');
     const existing = currentSettings[field.key];
@@ -41,12 +45,58 @@
       return wrap;
     }
 
+    if (field.type === 'folder') {
+      wrap.className = 'form-field';
+      wrap.innerHTML = `
+        <label for="field_${field.key}">${field.label}${field.required ? ' *' : ''}</label>
+        <div class="folder-field-row">
+          <input type="text" id="field_${field.key}"
+            value="${value !== undefined ? String(value).replace(/"/g, '&quot;') : ''}"
+            placeholder="${field.placeholder || ''}">
+          <button type="button" class="secondary-btn" data-browse-for="field_${field.key}">Browse&hellip;</button>
+        </div>
+        <div class="field-hint" data-browse-hint-for="field_${field.key}"></div>
+      `;
+      const browseBtn = wrap.querySelector(`[data-browse-for="field_${field.key}"]`);
+      const hintEl = wrap.querySelector(`[data-browse-hint-for="field_${field.key}"]`);
+      browseBtn.addEventListener('click', async () => {
+        hintEl.textContent = '';
+        browseBtn.disabled = true;
+        browseBtn.textContent = 'Waiting for Finder\u2026';
+        try {
+          const { path: chosen } = await api('/api/browse-folder', { method: 'POST' });
+          document.getElementById(`field_${field.key}`).value = chosen;
+        } catch (err) {
+          if (err.message !== 'Cancelled') hintEl.textContent = err.message;
+        } finally {
+          browseBtn.disabled = false;
+          browseBtn.textContent = 'Browse\u2026';
+        }
+      });
+      return wrap;
+    }
+
+    if (field.type === 'select') {
+      wrap.className = 'form-field';
+      const optionsHtml = (field.options || [])
+        .map(
+          (opt) =>
+            `<option value="${escapeAttr(opt.value)}" ${opt.value === value ? 'selected' : ''}>${opt.label}</option>`
+        )
+        .join('');
+      wrap.innerHTML = `
+        <label for="field_${field.key}">${field.label}${field.required ? ' *' : ''}</label>
+        <select id="field_${field.key}">${optionsHtml}</select>
+      `;
+      return wrap;
+    }
+
     wrap.className = 'form-field';
-    const inputType = field.type === 'number' ? 'number' : 'text';
+    const inputType = field.type === 'password' ? 'password' : field.type === 'number' ? 'number' : 'text';
     wrap.innerHTML = `
       <label for="field_${field.key}">${field.label}${field.required ? ' *' : ''}</label>
-      <input type="${inputType}" id="field_${field.key}"
-        value="${value !== undefined ? String(value).replace(/"/g, '&quot;') : ''}"
+      <input type="${inputType}" id="field_${field.key}" autocomplete="${field.type === 'password' ? 'off' : 'on'}"
+        value="${value !== undefined ? escapeAttr(value) : ''}"
         placeholder="${field.placeholder || ''}">
     `;
     return wrap;

@@ -4,6 +4,7 @@ const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
 const { Adapter } = require('./base');
+const { getThumbnail } = require('../lib/thumbnails');
 
 const IMAGE_EXT = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'heif', 'bmp', 'svg', 'tiff', 'avif']);
 const AUDIO_EXT = new Set(['mp3', 'wav', 'flac', 'm4a', 'ogg', 'aac']);
@@ -14,6 +15,14 @@ function extOf(filePath) {
   return path.extname(filePath).slice(1).toLowerCase();
 }
 
+// Express/`send`'s bundled mime database doesn't know some of these, and
+// browsers need the right Content-Type to render/play a streamed preview.
+const MIME_OVERRIDES = {
+  heic: 'image/heic',
+  heif: 'image/heif',
+  flac: 'audio/flac',
+};
+
 function previewTypeFor(filePath) {
   const ext = extOf(filePath);
   if (IMAGE_EXT.has(ext)) return 'image';
@@ -21,6 +30,12 @@ function previewTypeFor(filePath) {
   if (VIDEO_EXT.has(ext)) return 'video';
   if (TEXT_EXT.has(ext)) return 'text';
   return 'none';
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(bytes < 10 * 1024 ? 1 : 0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function idFor(relativePath) {
@@ -34,7 +49,9 @@ function pathForId(id) {
 /**
  * Reference adapter: point at any local folder and swipe through its files.
  * "Reject" never deletes -- it moves the file into a trash folder alongside
- * the source, and "Undo" moves it right back.
+ * the source, and "Undo" moves it right back. "Empty trash" (a separate,
+ * confirm-guarded action) is the only place this adapter permanently deletes
+ * anything.
  */
 class FolderAdapter extends Adapter {
   static id = 'folder';
@@ -46,7 +63,7 @@ class FolderAdapter extends Adapter {
     {
       key: 'folderPath',
       label: 'Folder path',
-      type: 'text',
+      type: 'folder',
       required: true,
       placeholder: '/Users/you/Pictures/to-sort',
     },
@@ -63,7 +80,8 @@ class FolderAdapter extends Adapter {
   static actions = [
     { id: 'keep', label: 'Keep', key: 'ArrowRight', direction: 'right' },
     { id: 'reject', label: 'Reject', key: 'ArrowLeft', direction: 'left', isDestructive: true },
-    { id: 'skip', label: 'Skip', key: ' ', direction: 'down' },
+    // Down = next without deciding (skip). Up = undo/go back (handled in the UI, not an action).
+    { id: 'skip', label: 'Skip', key: 'ArrowDown', direction: 'down' },
   ];
 
   constructor(settings) {
@@ -119,7 +137,7 @@ class FolderAdapter extends Adapter {
         subtitle: dir === '.' ? undefined : dir,
         previewType: previewTypeFor(rel),
         meta: {
-          sizeKb: Math.round(stat.size / 1024),
+          size: formatSize(stat.size),
           modified: stat.mtime.toISOString().slice(0, 10),
         },
       });
@@ -136,8 +154,22 @@ class FolderAdapter extends Adapter {
     return abs;
   }
 
-  async resolvePreviewPath(itemId) {
-    return this._absoluteFor(itemId);
+  async streamPreview(itemId, res) {
+    const abs = this._absoluteFor(itemId);
+    if (!fs.existsSync(abs)) return false;
+    const override = MIME_OVERRIDES[extOf(abs)];
+    if (override) res.type(override);
+    res.sendFile(abs);
+    return true;
+  }
+
+  async streamThumbnail(itemId, res) {
+    const abs = this._absoluteFor(itemId);
+    if (!fs.existsSync(abs)) return false;
+    const thumbPath = await getThumbnail(abs);
+    if (!thumbPath) return false;
+    res.sendFile(thumbPath);
+    return true;
   }
 
   async applyAction(item, actionId) {
@@ -156,6 +188,21 @@ class FolderAdapter extends Adapter {
       await fsp.mkdir(path.dirname(record.from), { recursive: true });
       await fsp.rename(record.to, record.from);
     }
+  }
+
+  async describeTrash() {
+    const entries = await fsp.readdir(this.trashDir).catch(() => []);
+    const count = entries.filter((name) => !name.startsWith('.')).length;
+    return { count, label: `${this.trashDirName} (permanent delete)` };
+  }
+
+  async emptyTrash() {
+    const entries = await fsp.readdir(this.trashDir).catch(() => []);
+    await Promise.all(
+      entries
+        .filter((name) => !name.startsWith('.'))
+        .map((name) => fsp.rm(path.join(this.trashDir, name), { recursive: true, force: true }))
+    );
   }
 
   describeSource() {

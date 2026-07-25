@@ -3,16 +3,20 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const { execFile } = require('child_process');
 const { getAdapter, listAdapters } = require('./adapters/registry');
 
 const app = express();
 const PORT = process.env.PORT || 5757;
-const CONFIG_PATH = path.join(__dirname, 'swipeanything.config.json');
+// Overridable so the test suite (and anyone running multiple instances) can
+// point at an isolated config/session file instead of the project's own.
+const CONFIG_PATH = process.env.SWIPEANYTHING_CONFIG_PATH || path.join(__dirname, 'swipeanything.config.json');
+const SESSION_PATH = process.env.SWIPEANYTHING_SESSION_PATH || path.join(__dirname, '.swipeanything-session.json');
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-/** @type {{ adapterId: string, adapter: import('./adapters/base').Adapter, queue: any[], index: number, history: any[] } | null} */
+/** @type {{ adapterId: string, adapter: import('./adapters/base').Adapter, queue: any[], index: number, history: any[], configSignature: string } | null} */
 let session = null;
 
 function loadConfig() {
@@ -28,13 +32,56 @@ function saveConfig(config) {
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
 }
 
+function loadSavedSession() {
+  if (!fs.existsSync(SESSION_PATH)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(SESSION_PATH, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function persistSession(s) {
+  try {
+    fs.writeFileSync(
+      SESSION_PATH,
+      JSON.stringify({
+        configSignature: s.configSignature,
+        itemIds: s.queue.map((item) => item.id),
+        index: s.index,
+        history: s.history,
+      })
+    );
+  } catch {
+    // best-effort; a failed write just means we won't resume after a restart
+  }
+}
+
+function arraysEqual(a, b) {
+  return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
 async function startSession(config) {
   const AdapterClass = getAdapter(config.adapter);
   if (!AdapterClass) throw new Error(`Unknown adapter: ${config.adapter}`);
   const adapter = new AdapterClass(config.settings || {});
   await adapter.init();
   const queue = await adapter.list();
-  session = { adapterId: config.adapter, adapter, queue, index: 0, history: [] };
+  const configSignature = JSON.stringify(config);
+
+  session = { adapterId: config.adapter, adapter, queue, index: 0, history: [], configSignature };
+
+  // Resume progress if this is the same config reviewing the same items as
+  // last time the server ran (e.g. after a restart, or a Rescan that found
+  // no changes). If the item set changed, this naturally falls through to
+  // a fresh session instead.
+  const saved = loadSavedSession();
+  if (saved && saved.configSignature === configSignature && arraysEqual(saved.itemIds, queue.map((i) => i.id))) {
+    session.index = saved.index;
+    session.history = saved.history;
+  }
+
+  persistSession(session);
   return session;
 }
 
@@ -45,10 +92,11 @@ async function ensureSession() {
   return startSession(config);
 }
 
-function queuePayload(s) {
+async function queuePayload(s) {
   const remaining = s.queue.slice(s.index);
   const counts = {};
   for (const entry of s.history) counts[entry.actionId] = (counts[entry.actionId] || 0) + 1;
+  const trashInfo = await s.adapter.describeTrash().catch(() => null);
   return {
     adapterId: s.adapterId,
     sourceLabel: s.adapter.describeSource(),
@@ -59,6 +107,7 @@ function queuePayload(s) {
     current: remaining[0] || null,
     upcoming: remaining.slice(1, 4),
     canUndo: s.history.length > 0,
+    trashInfo,
   };
 }
 
@@ -86,11 +135,25 @@ app.post('/api/config', async (req, res) => {
   res.json({ ok: true });
 });
 
+app.post('/api/browse-folder', (req, res) => {
+  if (process.platform !== 'darwin') {
+    return res.status(501).json({ error: 'Native folder picker is only available on macOS. Enter the path manually.' });
+  }
+  const script = 'POSIX path of (choose folder with prompt "Select a folder for SwipeAnything")';
+  execFile('osascript', ['-e', script], { timeout: 120000 }, (err, stdout) => {
+    if (err) {
+      const message = /user canceled/i.test(err.message || '') ? 'Cancelled' : err.message;
+      return res.status(400).json({ error: message });
+    }
+    res.json({ path: stdout.trim() });
+  });
+});
+
 app.get('/api/queue', async (req, res) => {
   const s = await ensureSession().catch((err) => ({ __error: err }));
   if (!s) return res.status(409).json({ error: 'Not configured yet' });
   if (s.__error) return res.status(400).json({ error: s.__error.message });
-  res.json(queuePayload(s));
+  res.json(await queuePayload(s));
 });
 
 app.post('/api/rescan', async (req, res) => {
@@ -99,7 +162,7 @@ app.post('/api/rescan', async (req, res) => {
   session = null;
   try {
     const s = await startSession(config);
-    res.json(queuePayload(s));
+    res.json(await queuePayload(s));
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -109,9 +172,19 @@ app.get('/api/preview/:itemId', async (req, res) => {
   const s = await ensureSession().catch(() => null);
   if (!s) return res.status(409).end();
   try {
-    const filePath = await s.adapter.resolvePreviewPath(req.params.itemId);
-    if (!filePath || !fs.existsSync(filePath)) return res.status(404).end();
-    res.sendFile(filePath);
+    const handled = await s.adapter.streamPreview(req.params.itemId, res);
+    if (!handled) res.status(404).end();
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/api/thumbnail/:itemId', async (req, res) => {
+  const s = await ensureSession().catch(() => null);
+  if (!s) return res.status(409).end();
+  try {
+    const handled = await s.adapter.streamThumbnail(req.params.itemId, res);
+    if (!handled) res.status(404).end();
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
@@ -137,7 +210,8 @@ app.post('/api/action', async (req, res) => {
   }
   s.history.push({ index: s.index, item, actionId, record: record || null });
   s.index += 1;
-  res.json(queuePayload(s));
+  persistSession(s);
+  res.json(await queuePayload(s));
 });
 
 app.post('/api/undo', async (req, res) => {
@@ -153,9 +227,31 @@ app.post('/api/undo', async (req, res) => {
     return res.status(400).json({ error: err.message });
   }
   s.index = entry.index;
-  res.json(queuePayload(s));
+  persistSession(s);
+  res.json(await queuePayload(s));
 });
 
-app.listen(PORT, () => {
-  console.log(`SwipeAnything running at http://localhost:${PORT}`);
+app.post('/api/empty-trash', async (req, res) => {
+  const s = await ensureSession().catch(() => null);
+  if (!s) return res.status(409).json({ error: 'Not configured yet' });
+  try {
+    await s.adapter.emptyTrash();
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  res.json(await queuePayload(s));
 });
+
+function start(port = PORT) {
+  return new Promise((resolve) => {
+    const server = app.listen(port, () => resolve(server));
+  });
+}
+
+if (require.main === module) {
+  start().then((server) => {
+    console.log(`SwipeAnything running at http://localhost:${server.address().port}`);
+  });
+}
+
+module.exports = { app, start };

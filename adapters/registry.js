@@ -1,10 +1,12 @@
 'use strict';
 
 const { FolderAdapter } = require('./folder');
+const { ImmichAdapter } = require('./immich');
 
 // Register new adapters here. See CONTRIBUTING.md for the full guide.
 const ADAPTERS = {
   [FolderAdapter.id]: FolderAdapter,
+  [ImmichAdapter.id]: ImmichAdapter,
 };
 
 function getAdapter(id) {

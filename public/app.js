@@ -7,10 +7,33 @@
   const statsLineEl = document.getElementById('statsLine');
   const sourceLabelEl = document.getElementById('sourceLabel');
   const rescanLink = document.getElementById('rescanLink');
+  const emptyTrashLink = document.getElementById('emptyTrashLink');
+  const shortcutsLink = document.getElementById('shortcutsLink');
+  const shortcutsModal = document.getElementById('shortcutsModal');
+  const shortcutsClose = document.getElementById('shortcutsClose');
+  const liveRegionEl = document.getElementById('liveRegion');
 
   const DRAG_THRESHOLD = 110;
   let state = null; // last /api/queue payload
   let dragging = null;
+  let busy = false;
+  let focusBeforeModal = null;
+
+  const KEY_LABEL = {
+    ArrowLeft: '←',
+    ArrowRight: '→',
+    ArrowUp: '↑',
+    ArrowDown: '↓',
+    ' ': 'Space',
+  };
+
+  const KEY_SPOKEN = {
+    ArrowLeft: 'left arrow',
+    ArrowRight: 'right arrow',
+    ArrowUp: 'up arrow',
+    ArrowDown: 'down arrow',
+    ' ': 'space',
+  };
 
   async function api(path, options) {
     const res = await fetch(path, {
@@ -27,16 +50,49 @@
     return Object.entries(meta).map(([key, value]) => `${key}: ${value}`);
   }
 
+  function keyGlyph(key) {
+    return KEY_LABEL[key] || key;
+  }
+
+  function keySpoken(key) {
+    return KEY_SPOKEN[key] || key;
+  }
+
+  function announce(message) {
+    liveRegionEl.textContent = '';
+    // re-trigger even if the text is identical to the last announcement
+    window.requestAnimationFrame(() => {
+      liveRegionEl.textContent = message;
+    });
+  }
+
   function renderPreview(item) {
     const wrap = document.createElement('div');
     wrap.className = 'preview';
     const src = `/api/preview/${item.id}`;
+    const thumbSrc = `/api/thumbnail/${item.id}`;
     switch (item.previewType) {
       case 'image': {
         const img = document.createElement('img');
-        img.src = src;
+        img.src = thumbSrc;
         img.alt = item.title;
         img.draggable = false;
+        img.addEventListener(
+          'error',
+          () => {
+            if (img.src.endsWith(thumbSrc)) {
+              img.src = src; // fall back to the full file if a thumbnail couldn't be made
+              return;
+            }
+            wrap.classList.add('file-icon');
+            wrap.textContent = 'image failed to load\n(try jpg/png/webp — heic may need a Mac to preview)';
+            wrap.style.fontSize = '12px';
+            wrap.style.color = 'var(--sub)';
+            wrap.style.whiteSpace = 'pre-line';
+            wrap.style.padding = '24px';
+          },
+          { once: false }
+        );
         wrap.appendChild(img);
         break;
       }
@@ -51,6 +107,11 @@
       case 'video': {
         const video = document.createElement('video');
         video.controls = true;
+        video.autoplay = true;
+        video.muted = true;
+        video.loop = true;
+        video.playsInline = true;
+        video.poster = thumbSrc;
         video.src = src;
         wrap.appendChild(video);
         break;
@@ -71,15 +132,18 @@
       }
       default: {
         wrap.classList.add('file-icon');
+        wrap.setAttribute('aria-hidden', 'true');
         wrap.textContent = '\u{1F4C4}';
       }
     }
     return wrap;
   }
 
-  function renderCard(item, actions) {
+  function renderCard(item, actions, position) {
     const card = document.createElement('div');
     card.className = 'card';
+    card.setAttribute('role', 'group');
+    card.setAttribute('aria-label', `${position.index} of ${position.total}: ${item.title}`);
     card.appendChild(renderPreview(item));
 
     const title = document.createElement('div');
@@ -114,6 +178,7 @@
       stamp.className = `stamp ${dir}`;
       stamp.dataset.direction = dir;
       stamp.textContent = action.label;
+      stamp.setAttribute('aria-hidden', 'true');
       card.appendChild(stamp);
     }
 
@@ -128,6 +193,7 @@
     const rightStamp = card.querySelector('.stamp.right');
 
     function onPointerDown(e) {
+      if (busy) return;
       dragging = { startX: e.clientX, startY: e.clientY, dx: 0 };
       card.setPointerCapture(e.pointerId);
     }
@@ -148,9 +214,9 @@
       const dx = dragging.dx;
       dragging = null;
       if (dx > DRAG_THRESHOLD && rightAction) {
-        flingAndAct(card, rightAction, 1);
+        animateAction(rightAction);
       } else if (dx < -DRAG_THRESHOLD && leftAction) {
-        flingAndAct(card, leftAction, -1);
+        animateAction(leftAction);
       } else {
         card.style.transform = '';
         if (leftStamp) leftStamp.style.opacity = '0';
@@ -164,10 +230,43 @@
     card.addEventListener('pointercancel', onPointerUp);
   }
 
-  function flingAndAct(card, action, dir) {
-    card.style.transition = 'transform 0.25s ease-out';
+  /** Show KEEP/REJECT stamp + fling, then commit the action. */
+  function animateAction(action) {
+    if (busy || !state || !state.current) return;
+    const card = deckEl.querySelector('.card');
+    if (!card) {
+      performAction(action.id);
+      return;
+    }
+
+    const dir = action.direction === 'right' ? 1 : action.direction === 'left' ? -1 : 0;
+    const stamp = card.querySelector(`.stamp.${action.direction}`);
+    if (stamp) stamp.style.opacity = '1';
+
+    if (dir === 0) {
+      performAction(action.id);
+      return;
+    }
+
+    busy = true;
+    card.style.transition = 'transform 0.28s ease-out, opacity 0.28s ease-out';
     card.style.transform = `translate(${dir * 500}px, -40px) rotate(${dir * 25}deg)`;
-    setTimeout(() => performAction(action.id), 120);
+    card.style.opacity = '0';
+    setTimeout(() => {
+      busy = false;
+      performAction(action.id);
+    }, 220);
+  }
+
+  function triggerAction(actionId) {
+    if (busy || !state) return;
+    const action = (state.actions || []).find((a) => a.id === actionId);
+    if (!action) return;
+    if (action.direction === 'left' || action.direction === 'right') {
+      animateAction(action);
+    } else {
+      performAction(actionId);
+    }
   }
 
   function renderActionsRow(actions) {
@@ -175,16 +274,43 @@
     for (const action of actions) {
       const btn = document.createElement('button');
       btn.className = 'action-btn';
+      btn.type = 'button';
+      btn.setAttribute('aria-label', `${action.label}, ${keySpoken(action.key)}`);
       if (action.id === 'keep') btn.classList.add('keep');
       if (action.isDestructive) btn.classList.add('reject');
-      btn.textContent = action.label;
-      btn.addEventListener('click', () => performAction(action.id));
+      if (action.id === 'skip') btn.classList.add('skip');
+
+      const label = document.createElement('span');
+      label.className = 'action-label';
+      label.textContent = action.label;
+      label.setAttribute('aria-hidden', 'true');
+
+      const key = document.createElement('span');
+      key.className = 'action-key';
+      key.textContent = keyGlyph(action.key);
+      key.setAttribute('aria-hidden', 'true');
+
+      btn.appendChild(label);
+      btn.appendChild(key);
+      btn.addEventListener('click', () => triggerAction(action.id));
       actionsRowEl.appendChild(btn);
     }
+
     const undoBtn = document.createElement('button');
+    undoBtn.type = 'button';
     undoBtn.className = 'action-btn undo';
-    undoBtn.textContent = 'Undo';
     undoBtn.disabled = !state || !state.canUndo;
+    undoBtn.setAttribute('aria-label', 'Undo, up arrow');
+    const undoLabel = document.createElement('span');
+    undoLabel.className = 'action-label';
+    undoLabel.textContent = 'Undo';
+    undoLabel.setAttribute('aria-hidden', 'true');
+    const undoKey = document.createElement('span');
+    undoKey.className = 'action-key';
+    undoKey.textContent = '↑';
+    undoKey.setAttribute('aria-hidden', 'true');
+    undoBtn.appendChild(undoLabel);
+    undoBtn.appendChild(undoKey);
     undoBtn.addEventListener('click', undo);
     actionsRowEl.appendChild(undoBtn);
   }
@@ -193,11 +319,20 @@
     if (!state) return;
     const pct = state.total ? Math.round((state.reviewed / state.total) * 100) : 0;
     progressFillEl.style.width = `${pct}%`;
+    progressFillEl.setAttribute('aria-valuemax', String(state.total));
+    progressFillEl.setAttribute('aria-valuenow', String(state.reviewed));
     sourceLabelEl.textContent = state.sourceLabel || '';
     const countBits = Object.entries(state.counts || {})
       .map(([id, n]) => `${id}: ${n}`)
       .join(' \u00b7 ');
     statsLineEl.textContent = `${state.reviewed}/${state.total} reviewed${countBits ? '  \u2014  ' + countBits : ''}`;
+
+    if (state.trashInfo && state.trashInfo.count > 0) {
+      emptyTrashLink.hidden = false;
+      emptyTrashLink.textContent = `Empty trash (${state.trashInfo.count})`;
+    } else {
+      emptyTrashLink.hidden = true;
+    }
   }
 
   function renderDeck() {
@@ -212,11 +347,14 @@
       empty.innerHTML = `All done. ${state.total} item(s) reviewed.<div class="summary">${countBits}</div>`;
       deckEl.appendChild(empty);
       renderActionsRow([]);
+      announce(`All done. ${state.total} items reviewed.`);
       return;
     }
-    const card = renderCard(state.current, state.actions);
+    const position = { index: state.reviewed + 1, total: state.total };
+    const card = renderCard(state.current, state.actions, position);
     deckEl.appendChild(card);
     renderActionsRow(state.actions);
+    announce(`Item ${position.index} of ${position.total}: ${state.current.title}`);
   }
 
   function render() {
@@ -225,7 +363,51 @@
   }
 
   function showError(message) {
-    deckEl.innerHTML = `<div class="error-state">${message}</div>`;
+    deckEl.innerHTML = `<div class="error-state" role="alert">${message}</div>`;
+  }
+
+  function getFocusable(container) {
+    return Array.from(
+      container.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+    ).filter((el) => !el.disabled && el.offsetParent !== null);
+  }
+
+  function trapFocus(e) {
+    if (e.key !== 'Tab') return;
+    const focusable = getFocusable(shortcutsModal);
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+
+  function openShortcuts() {
+    focusBeforeModal = document.activeElement;
+    shortcutsModal.hidden = false;
+    shortcutsModal.setAttribute('aria-hidden', 'false');
+    shortcutsModal.addEventListener('keydown', trapFocus);
+    shortcutsClose.focus();
+  }
+
+  function closeShortcuts() {
+    shortcutsModal.hidden = true;
+    shortcutsModal.setAttribute('aria-hidden', 'true');
+    shortcutsModal.removeEventListener('keydown', trapFocus);
+    if (focusBeforeModal && typeof focusBeforeModal.focus === 'function') {
+      focusBeforeModal.focus();
+    }
+    focusBeforeModal = null;
+  }
+
+  function toggleShortcuts() {
+    if (shortcutsModal.hidden) openShortcuts();
+    else closeShortcuts();
   }
 
   async function refresh() {
@@ -254,6 +436,7 @@
   }
 
   async function undo() {
+    if (busy) return;
     try {
       state = await api('/api/undo', { method: 'POST' });
       render();
@@ -262,8 +445,7 @@
     }
   }
 
-  rescanLink.addEventListener('click', async (e) => {
-    e.preventDefault();
+  rescanLink.addEventListener('click', async () => {
     try {
       state = await api('/api/rescan', { method: 'POST' });
       render();
@@ -272,17 +454,65 @@
     }
   });
 
+  emptyTrashLink.addEventListener('click', async () => {
+    const count = state && state.trashInfo ? state.trashInfo.count : 0;
+    const ok = window.confirm(
+      `Permanently delete ${count} item(s) from trash? This cannot be undone.`
+    );
+    if (!ok) return;
+    try {
+      state = await api('/api/empty-trash', { method: 'POST' });
+      render();
+      announce('Trash emptied.');
+    } catch (err) {
+      showError(err.message);
+    }
+  });
+
+  shortcutsLink.addEventListener('click', () => {
+    toggleShortcuts();
+  });
+  shortcutsClose.addEventListener('click', closeShortcuts);
+  shortcutsModal.addEventListener('click', (e) => {
+    if (e.target === shortcutsModal) closeShortcuts();
+  });
+
   document.addEventListener('keydown', (e) => {
-    if (!state || !state.current) return;
-    if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey)) {
+    // Shift+? (Shift+/ on most keyboards) toggles shortcuts help
+    if (e.key === '?' || (e.shiftKey && e.key === '/')) {
+      e.preventDefault();
+      toggleShortcuts();
+      return;
+    }
+    if (e.key === 'Escape' && !shortcutsModal.hidden) {
+      e.preventDefault();
+      closeShortcuts();
+      return;
+    }
+    if (!shortcutsModal.hidden) return;
+    if (!state) return;
+
+    if (e.key === 'ArrowUp' || ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey))) {
       e.preventDefault();
       undo();
       return;
     }
-    const action = (state.actions || []).find((a) => a.key === e.key);
-    if (action) {
+    if (!state.current || busy) return;
+
+    if (e.key === 'ArrowDown' || e.key === ' ') {
       e.preventDefault();
-      performAction(action.id);
+      triggerAction('skip');
+      return;
+    }
+    if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      triggerAction('keep');
+      return;
+    }
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      triggerAction('reject');
+      return;
     }
   });
 

@@ -45,9 +45,27 @@ work for any adapter that implements the contract below.
        // Reverse applyAction() using the record it returned.
      }
 
-     // Optional, only if items have a file-like preview:
-     async resolvePreviewPath(itemId) {
+     // Optional: write a full-size preview straight to the Express response.
+     // Return true if you handled it, false to let the server 404.
+     async streamPreview(itemId, res) {
+       return false;
+     }
+
+     // Optional: same, but for a smaller/faster thumbnail (used for the
+     // card image and as a video poster frame). Falls back to streamPreview
+     // in the UI if omitted or it returns false.
+     async streamThumbnail(itemId, res) {
+       return false;
+     }
+
+     // Optional: describe a reversible "trash" so the UI offers a
+     // confirm-guarded "Empty trash" action. Return null if you don't have one.
+     async describeTrash() {
        return null;
+     }
+
+     async emptyTrash() {
+       throw new Error('not supported');
      }
 
      describeSource() {
@@ -57,6 +75,11 @@ work for any adapter that implements the contract below.
 
    module.exports = { YourAdapter };
    ```
+
+   See `adapters/folder.js` for a local-filesystem implementation (`res.sendFile`
+   + a Quick Look thumbnail cache) and `adapters/immich.js` for a remote-API
+   implementation (proxying a fetch response straight into `res`) of
+   `streamPreview`/`streamThumbnail`.
 
 2. Register it in `adapters/registry.js`:
 
@@ -96,6 +119,27 @@ npm start
 
 There's no build step — edit files under `public/` or `adapters/` and
 refresh the browser.
+
+## Testing
+
+```bash
+npm test
+```
+
+Runs Node's built-in test runner (`node --test`) against `test/`. No extra
+dev dependencies, no separate test server to start.
+
+- `test/folder-adapter.test.js` exercises the filesystem adapter against real
+  temp directories (list/reject/undo/emptyTrash/path-traversal guard).
+- `test/immich-adapter.test.js` exercises the API-based adapter with
+  `global.fetch` mocked out — no live Immich server needed. Follow this
+  pattern for other network-backed adapters.
+- `test/api.test.js` boots the real Express app (`server.start(0)`) against an
+  isolated config/session file (via the `SWIPEANYTHING_CONFIG_PATH` /
+  `SWIPEANYTHING_SESSION_PATH` env vars) and drives it over real HTTP.
+
+Please add or extend tests for new adapters and API changes — a fetch-mocked
+adapter test is usually enough; you don't need a live backend to contribute one.
 
 ## Pull requests
 

@@ -11,16 +11,42 @@
   <header>
     <h1>SwipeAnything</h1>
     <div class="header-actions">
-      <a class="icon-link" href="#" id="rescanLink">Rescan</a>
+      <button type="button" class="icon-link" id="shortcutsLink" title="Keyboard shortcuts (Shift+?)" aria-haspopup="dialog" aria-controls="shortcutsModal">?</button>
+      <button type="button" class="icon-link" id="rescanLink">Rescan</button>
+      <button type="button" class="icon-link" id="emptyTrashLink" hidden>Empty trash</button>
       <a class="icon-link" href="settings.html">Settings</a>
     </div>
   </header>
   <div class="source-label" id="sourceLabel"></div>
-  <div class="progress-track"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+  <div class="progress-track">
+    <div class="progress-fill" id="progressFill" role="progressbar" aria-label="Review progress" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" style="width:0%"></div>
+  </div>
   <div class="stats" id="statsLine"></div>
   <div class="deck" id="deck"></div>
   <div class="actions-row" id="actionsRow"></div>
+  <div id="liveRegion" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 </div>
+
+<div id="shortcutsModal" class="modal" hidden aria-hidden="true">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="shortcutsTitle">
+    <div class="modal-header">
+      <h2 id="shortcutsTitle">Shortcuts</h2>
+      <button type="button" class="icon-link modal-close" id="shortcutsClose" aria-label="Close shortcuts help">✕</button>
+    </div>
+    <dl class="shortcut-list">
+      <div><dt>→</dt><dd>Keep</dd></div>
+      <div><dt>←</dt><dd>Reject (to trash)</dd></div>
+      <div><dt>↓</dt><dd>Skip / next</dd></div>
+      <div><dt>↑</dt><dd>Undo / go back</dd></div>
+      <div><dt>Space</dt><dd>Skip / next</dd></div>
+      <div><dt>Ctrl/Cmd+Z</dt><dd>Undo</dd></div>
+      <div><dt>Shift+?</dt><dd>Toggle this help</dd></div>
+      <div><dt>Esc</dt><dd>Close help</dd></div>
+    </dl>
+    <p class="modal-hint">Drag the card left or right, or use the buttons below.</p>
+  </div>
+</div>
+
 <script src="app.js"></script>
 </body>
 </html>
