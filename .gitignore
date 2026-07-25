@@ -1,0 +1,5 @@
+node_modules/
+swipeanything.config.json
+.swipeanything-trash/
+.DS_Store
+*.log

@@ -1,0 +1,21 @@
+{
+  "name": "swipeanything",
+  "version": "0.1.0",
+  "description": "A local-first, pluggable swipe-to-triage UI. Point it at a folder today; write an adapter and point it at anything tomorrow.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "MIT",
+  "author": "",
+  "repository": {
+    "type": "git",
+    "url": "https://git.levkin.ca/ilia/SwipeAnything.git"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "adapter": "folder",
+  "settings": {
+    "folderPath": "/absolute/path/to/a/folder",
+    "recursive": false,
+    "extensions": "jpg,jpeg,png,gif,webp,heic,bmp",
+    "trashDirName": ".swipeanything-trash"
+  }
+}

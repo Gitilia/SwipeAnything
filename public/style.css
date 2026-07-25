@@ -1,0 +1,371 @@
+:root {
+  --bg: #0d0f12;
+  --card: #16191d;
+  --card2: #1d2227;
+  --text: #f0f2f4;
+  --sub: #9aa3ab;
+  --keep: #35c46a;
+  --reject: #e5484d;
+  --neutral: #f0b429;
+  --accent: #6ea8ff;
+  --border: #2a2f35;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  overscroll-behavior: none;
+}
+
+a {
+  color: var(--accent);
+}
+
+#app {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  gap: 10px;
+}
+
+h1 {
+  font-size: 17px;
+  margin: 0;
+  font-weight: 600;
+}
+
+.source-label {
+  font-size: 11px;
+  color: var(--sub);
+  word-break: break-all;
+  margin-bottom: 10px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+  flex: none;
+}
+
+.icon-link {
+  color: var(--sub);
+  text-decoration: none;
+  font-size: 13px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 9px;
+  background: var(--card);
+}
+
+.icon-link:hover {
+  color: var(--text);
+}
+
+.stats {
+  font-size: 12px;
+  color: var(--sub);
+}
+
+.progress-track {
+  height: 4px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.2s;
+}
+
+.deck {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 360px;
+}
+
+.card {
+  position: absolute;
+  width: 100%;
+  max-width: 400px;
+  min-height: 340px;
+  max-height: 78vh;
+  overflow-y: auto;
+  background: linear-gradient(180deg, var(--card2), var(--card));
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  padding: 22px 22px 26px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  user-select: none;
+  cursor: grab;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  touch-action: none;
+}
+
+.card:active {
+  cursor: grabbing;
+}
+
+.card .preview {
+  width: 100%;
+  max-height: 280px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #0a0c0e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card .preview img,
+.card .preview video {
+  width: 100%;
+  max-height: 280px;
+  object-fit: contain;
+  display: block;
+}
+
+.card .preview.file-icon {
+  height: 140px;
+  font-size: 48px;
+}
+
+.card .preview pre {
+  margin: 0;
+  padding: 12px;
+  font-size: 11px;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--sub);
+  max-height: 240px;
+  overflow: auto;
+  width: 100%;
+}
+
+.card .title {
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.3;
+  word-break: break-word;
+}
+
+.card .subtitle {
+  font-size: 12px;
+  color: var(--sub);
+  word-break: break-all;
+}
+
+.meta-row {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--sub);
+}
+
+.meta-badge {
+  padding: 2px 8px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: #1b1f24;
+}
+
+.stamp {
+  position: absolute;
+  top: 24px;
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 3px solid;
+  opacity: 0;
+  pointer-events: none;
+  transform: rotate(-12deg);
+  text-transform: uppercase;
+}
+
+.stamp.right {
+  right: 20px;
+  color: var(--keep);
+  border-color: var(--keep);
+}
+
+.stamp.left {
+  left: 20px;
+  color: var(--reject);
+  border-color: var(--reject);
+  transform: rotate(12deg);
+}
+
+.actions-row {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+
+.action-btn {
+  flex: none;
+  min-width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+}
+
+.action-btn.keep {
+  color: var(--keep);
+  border-color: var(--keep);
+}
+
+.action-btn.reject {
+  color: var(--reject);
+  border-color: var(--reject);
+}
+
+.action-btn.undo {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.action-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.empty-state,
+.error-state {
+  text-align: center;
+  padding: 40px 16px;
+  color: var(--sub);
+}
+
+.error-state {
+  color: var(--reject);
+}
+
+.summary {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.summary strong {
+  display: block;
+  font-size: 20px;
+}
+
+/* Settings page */
+.form-field {
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.form-field label {
+  display: block;
+  font-size: 13px;
+  color: var(--sub);
+  margin-bottom: 6px;
+}
+
+.form-field input[type='text'],
+.form-field input[type='number'],
+.form-field select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font-size: 14px;
+}
+
+.form-field.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.form-field.checkbox label {
+  margin-bottom: 0;
+}
+
+.adapter-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--card);
+  margin-bottom: 16px;
+}
+
+.adapter-desc {
+  font-size: 12px;
+  color: var(--sub);
+  margin-top: 4px;
+}
+
+.primary-btn {
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  border: none;
+  background: var(--accent);
+  color: #06121f;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primary-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.settings-error {
+  color: var(--reject);
+  font-size: 13px;
+  margin-top: 10px;
+  min-height: 18px;
+}

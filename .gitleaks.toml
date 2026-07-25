@@ -1,0 +1,13 @@
+# Gitleaks config for SwipeAnything
+# useDefault is required so detection rules load.
+
+title = "SwipeAnything gitleaks"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known false positives"
+paths = [
+  '''swipeanything\.config\.example\.json''',
+]
