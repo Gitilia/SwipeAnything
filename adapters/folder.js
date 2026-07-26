@@ -73,6 +73,7 @@ class FolderAdapter extends Adapter {
       label: 'File extensions (comma separated, blank = all files)',
       type: 'text',
       default: 'jpg,jpeg,png,gif,webp,heic,bmp',
+      placeholder: 'jpg,jpeg,png,gif,webp,heic,bmp',
     },
     { key: 'trashDirName', label: 'Trash folder name', type: 'text', default: '.swipeanything-trash' },
   ];
