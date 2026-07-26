@@ -6,6 +6,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Gitea Actions CI (`.gitea/workflows/ci.yml`): `npm test` + gitleaks on
+  every push/PR — the first PR gate for this repo.
+- Settings UI polish: selected-adapter highlight, custom radios (no native
+  connecting-line artifact), styled password/select fields, cleaner radio
+  accessible names, and adapter-scoped settings when switching sources.
+
+### Added (earlier)
 - **Immich adapter** (`adapters/immich.js`): swipe through a self-hosted
   Immich photo library. Reject moves the asset to Immich's own trash; undo
   restores it. Second reference implementation of the adapter contract,

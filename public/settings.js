@@ -8,6 +8,7 @@
   let adapters = [];
   let selectedAdapterId = null;
   let currentSettings = {};
+  let savedConfig = null;
 
   async function api(path, options) {
     const res = await fetch(path, {
@@ -116,20 +117,31 @@
     formEl.appendChild(saveBtn);
   }
 
+  function settingsFor(adapterId) {
+    if (savedConfig && savedConfig.adapter === adapterId) {
+      return { ...(savedConfig.settings || {}) };
+    }
+    return {};
+  }
+
   function renderAdapterList() {
     adapterListEl.innerHTML = '';
     for (const adapter of adapters) {
+      const selected = adapter.id === selectedAdapterId;
       const card = document.createElement('label');
-      card.className = 'adapter-card';
+      card.className = `adapter-card${selected ? ' selected' : ''}`;
       card.innerHTML = `
-        <div class="form-field checkbox" style="margin-bottom:0">
-          <input type="radio" name="adapter" value="${adapter.id}" ${adapter.id === selectedAdapterId ? 'checked' : ''}>
+        <div class="adapter-card-title">
+          <input type="radio" name="adapter" value="${adapter.id}"
+            aria-label="${adapter.label}" ${selected ? 'checked' : ''}>
           <strong>${adapter.label}</strong>
         </div>
         <div class="adapter-desc">${adapter.description || ''}</div>
       `;
       card.querySelector('input').addEventListener('change', () => {
         selectedAdapterId = adapter.id;
+        currentSettings = settingsFor(adapter.id);
+        renderAdapterList();
         renderForm();
       });
       adapterListEl.appendChild(card);
@@ -159,11 +171,13 @@
   async function init() {
     const [adapterList, configResp] = await Promise.all([api('/api/adapters'), api('/api/config')]);
     adapters = adapterList;
-    if (configResp.config) {
-      selectedAdapterId = configResp.config.adapter;
-      currentSettings = configResp.config.settings || {};
+    savedConfig = configResp.config || null;
+    if (savedConfig) {
+      selectedAdapterId = savedConfig.adapter;
+      currentSettings = settingsFor(selectedAdapterId);
     } else {
       selectedAdapterId = adapters[0] && adapters[0].id;
+      currentSettings = {};
     }
     renderAdapterList();
     renderForm();

@@ -441,15 +441,29 @@ h1 {
 }
 
 .form-field input[type='text'],
+.form-field input[type='password'],
 .form-field input[type='number'],
 .form-field select {
   width: 100%;
   padding: 10px 12px;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: var(--card);
+  background: var(--card2);
   color: var(--text);
   font-size: 14px;
+}
+
+.form-field input::placeholder {
+  color: var(--sub);
+  opacity: 0.7;
+}
+
+.form-field select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%239aa3ab' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
 }
 
 .form-field.checkbox {
@@ -499,20 +513,63 @@ h1 {
   border: none;
   margin: 0;
   padding: 0;
+  min-inline-size: 0;
 }
 
 .adapter-card {
+  display: block;
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 14px;
   background: var(--card);
-  margin-bottom: 16px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.adapter-card:hover {
+  border-color: #3a424a;
+}
+
+.adapter-card.selected {
+  border-color: var(--accent);
+  background: #141c28;
+}
+
+.adapter-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 0;
+}
+
+.adapter-card input[type='radio'] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  flex: none;
+  border: 2px solid var(--sub);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.adapter-card input[type='radio']:checked {
+  border-color: var(--accent);
+  background: radial-gradient(circle, var(--accent) 0 45%, transparent 48%);
+}
+
+.adapter-card-title strong {
+  font-size: 14px;
 }
 
 .adapter-desc {
   font-size: 12px;
   color: var(--sub);
-  margin-top: 4px;
+  margin: 6px 0 0 24px;
+  line-height: 1.4;
 }
 
 .primary-btn {

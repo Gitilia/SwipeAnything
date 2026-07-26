@@ -17,11 +17,11 @@ class ImmichAdapter extends Adapter {
   static id = 'immich';
   static label = 'Immich';
   static description =
-    'Swipe through a self-hosted Immich photo library. Reject moves the asset to Immich\u2019s own trash; undo restores it.';
+    "Swipe through a self-hosted Immich photo library. Reject moves the asset to Immich's own trash; undo restores it.";
 
   static configSchema = [
     { key: 'serverUrl', label: 'Server URL', type: 'text', required: true, placeholder: 'https://immich.example.com' },
-    { key: 'apiKey', label: 'API key', type: 'password', required: true },
+    { key: 'apiKey', label: 'API key', type: 'password', required: true, placeholder: 'immich_api_key_…' },
     {
       key: 'mode',
       label: 'Order',

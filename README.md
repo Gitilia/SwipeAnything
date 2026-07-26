@@ -47,6 +47,7 @@ see [CONTRIBUTING.md](CONTRIBUTING.md).
 - Zero build step: Node.js + Express + vanilla HTML/CSS/JS
 - `npm test` runs a real test suite (folder adapter, Immich adapter with a
   mocked API, and the HTTP API end-to-end) — no separate test server to stand up
+- CI on every push/PR (Gitea Actions): `npm test` + gitleaks
 
 ## Quickstart
 
@@ -58,7 +59,8 @@ npm start
 ```
 
 Open `http://localhost:5757`. On first run you'll land on **Settings** —
-pick an adapter, fill in its settings, and start swiping.
+pick an adapter (the selected one is highlighted), fill in its settings
+(Browse… opens a Finder dialog on macOS for folder paths), and start swiping.
 
 Alternatively, copy `swipeanything.config.example.json` to
 `swipeanything.config.json` and edit it directly:
@@ -75,7 +77,7 @@ npm test
 
 Uses Node's built-in test runner (`node --test`) — no extra dev dependencies.
 The Immich adapter is tested with a mocked `fetch`, so nothing here needs a
-live server.
+live server. The same suite is the PR gate in [`.gitea/workflows/ci.yml`](.gitea/workflows/ci.yml).
 
 ## Controls
 
