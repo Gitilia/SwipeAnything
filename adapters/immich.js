@@ -126,6 +126,35 @@ class ImmichAdapter extends Adapter {
     return this._streamAssetImage(itemId, 'thumbnail', res);
   }
 
+  async getDetails(itemId) {
+    const res = await this._request(`/assets/${itemId}`);
+    const asset = await res.json();
+    const fields = [
+      { label: 'Name', value: asset.originalFileName || asset.id },
+      { label: 'Type', value: asset.type },
+      { label: 'Created', value: asset.fileCreatedAt },
+      { label: 'Favorite', value: asset.isFavorite ? 'yes' : 'no' },
+    ];
+    const exif = asset.exifInfo || {};
+    if (exif.exifImageWidth && exif.exifImageHeight) {
+      fields.push({ label: 'Dimensions', value: `${exif.exifImageWidth} × ${exif.exifImageHeight}` });
+    }
+    if (exif.make || exif.model) {
+      fields.push({ label: 'Camera', value: [exif.make, exif.model].filter(Boolean).join(' ') });
+    }
+    if (exif.dateTimeOriginal) fields.push({ label: 'Captured', value: exif.dateTimeOriginal });
+    if (exif.city || exif.country) {
+      fields.push({ label: 'Location', value: [exif.city, exif.state, exif.country].filter(Boolean).join(', ') });
+    }
+    if (exif.lensModel) fields.push({ label: 'Lens', value: exif.lensModel });
+    if (asset.originalPath) fields.push({ label: 'Path', value: asset.originalPath });
+    return { fields: fields.filter((f) => f.value), actions: [] };
+  }
+
+  uiHints() {
+    return { showDetailsByDefault: false, supportsDetails: true };
+  }
+
   async applyAction(item, actionId) {
     if (actionId === 'reject') {
       await this._request('/assets', {

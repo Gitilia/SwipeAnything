@@ -3,6 +3,15 @@
 
   const deckEl = document.getElementById('deck');
   const actionsRowEl = document.getElementById('actionsRow');
+  const organizeRowEl = document.getElementById('organizeRow');
+  const detailsSheetEl = document.getElementById('detailsSheet');
+  const detailsListEl = document.getElementById('detailsList');
+  const detailsStatusEl = document.getElementById('detailsStatus');
+  const detailsCopyPathBtn = document.getElementById('detailsCopyPath');
+  const detailsRevealBtn = document.getElementById('detailsReveal');
+  const detailsCloseBtn = document.getElementById('detailsClose');
+  const detailsBackdrop = document.getElementById('detailsBackdrop');
+  const detailsLink = document.getElementById('detailsLink');
   const progressFillEl = document.getElementById('progressFill');
   const statsLineEl = document.getElementById('statsLine');
   const sourceLabelEl = document.getElementById('sourceLabel');
@@ -11,6 +20,7 @@
   const shortcutsLink = document.getElementById('shortcutsLink');
   const shortcutsModal = document.getElementById('shortcutsModal');
   const shortcutsClose = document.getElementById('shortcutsClose');
+  const shortcutListEl = document.getElementById('shortcutList');
   const liveRegionEl = document.getElementById('liveRegion');
 
   const DRAG_THRESHOLD = 110;
@@ -18,6 +28,10 @@
   let dragging = null;
   let busy = false;
   let focusBeforeModal = null;
+  let detailsOpen = false;
+  let detailsDismissed = false;
+  let detailsForId = null;
+  let detailsCache = null;
 
   const KEY_LABEL = {
     ArrowLeft: '←',
@@ -85,7 +99,7 @@
               return;
             }
             wrap.classList.add('file-icon');
-            wrap.textContent = 'image failed to load\n(try jpg/png/webp — heic may need a Mac to preview)';
+            wrap.textContent = 'preview failed\n(jpg/png/webp work everywhere; HEIC/RAW need macOS Quick Look)';
             wrap.style.fontSize = '12px';
             wrap.style.color = 'var(--sub)';
             wrap.style.whiteSpace = 'pre-line';
@@ -94,6 +108,50 @@
           { once: false }
         );
         wrap.appendChild(img);
+        break;
+      }
+      case 'pdf': {
+        // First-page Quick Look thumb when available; otherwise in-browser PDF.
+        const img = document.createElement('img');
+        img.src = thumbSrc;
+        img.alt = item.title;
+        img.draggable = false;
+        const badge = document.createElement('div');
+        badge.className = 'preview-badge';
+        badge.textContent = 'PDF';
+        wrap.appendChild(badge);
+        img.addEventListener(
+          'error',
+          () => {
+            img.remove();
+            const frame = document.createElement('iframe');
+            frame.className = 'pdf-frame';
+            frame.src = src;
+            frame.title = item.title;
+            wrap.appendChild(frame);
+          },
+          { once: true }
+        );
+        wrap.appendChild(img);
+        break;
+      }
+      case 'archive': {
+        const pre = document.createElement('pre');
+        pre.className = 'archive-listing';
+        pre.textContent = 'Listing archive…';
+        wrap.appendChild(pre);
+        const badge = document.createElement('div');
+        badge.className = 'preview-badge';
+        badge.textContent = 'ZIP';
+        wrap.appendChild(badge);
+        fetch(src)
+          .then((r) => r.text())
+          .then((text) => {
+            pre.textContent = text.slice(0, 4000);
+          })
+          .catch(() => {
+            pre.textContent = '(could not list archive)';
+          });
         break;
       }
       case 'audio': {
@@ -149,6 +207,12 @@
     const title = document.createElement('div');
     title.className = 'title';
     title.textContent = item.title;
+    title.title = 'Click for details (or press i)';
+    title.style.cursor = 'pointer';
+    title.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleDetails();
+    });
     card.appendChild(title);
 
     if (item.subtitle) {
@@ -230,7 +294,7 @@
     card.addEventListener('pointercancel', onPointerUp);
   }
 
-  /** Show KEEP/REJECT stamp + fling, then commit the action. */
+  /** Show KEEP/REJECT/organize stamp + fling, then commit the action. */
   function animateAction(action) {
     if (busy || !state || !state.current) return;
     const card = deckEl.querySelector('.card');
@@ -240,17 +304,33 @@
     }
 
     const dir = action.direction === 'right' ? 1 : action.direction === 'left' ? -1 : 0;
-    const stamp = card.querySelector(`.stamp.${action.direction}`);
-    if (stamp) stamp.style.opacity = '1';
+    if (action.direction === 'left' || action.direction === 'right') {
+      const stamp = card.querySelector(`.stamp.${action.direction}`);
+      if (stamp) stamp.style.opacity = '1';
+    } else if (action.group === 'organize') {
+      let stamp = card.querySelector('.stamp.center');
+      if (!stamp) {
+        stamp = document.createElement('div');
+        stamp.className = 'stamp center';
+        stamp.setAttribute('aria-hidden', 'true');
+        card.appendChild(stamp);
+      }
+      stamp.textContent = action.label;
+      stamp.style.opacity = '1';
+    }
 
-    if (dir === 0) {
+    if (dir === 0 && action.group !== 'organize') {
       performAction(action.id);
       return;
     }
 
     busy = true;
     card.style.transition = 'transform 0.28s ease-out, opacity 0.28s ease-out';
-    card.style.transform = `translate(${dir * 500}px, -40px) rotate(${dir * 25}deg)`;
+    if (dir !== 0) {
+      card.style.transform = `translate(${dir * 500}px, -40px) rotate(${dir * 25}deg)`;
+    } else {
+      card.style.transform = 'translate(0, -120px) scale(0.92)';
+    }
     card.style.opacity = '0';
     setTimeout(() => {
       busy = false;
@@ -262,38 +342,126 @@
     if (busy || !state) return;
     const action = (state.actions || []).find((a) => a.id === actionId);
     if (!action) return;
-    if (action.direction === 'left' || action.direction === 'right') {
+    if (action.direction === 'left' || action.direction === 'right' || action.group === 'organize') {
       animateAction(action);
     } else {
       performAction(actionId);
     }
   }
 
+  function makeActionButton(action, className) {
+    const btn = document.createElement('button');
+    btn.className = className;
+    btn.type = 'button';
+    btn.title = action.destPath ? `${action.label}\n${action.destPath}` : action.label;
+    btn.setAttribute('aria-label', `${action.label}, ${keySpoken(action.key)}`);
+    if (action.id === 'keep') btn.classList.add('keep');
+    if (action.isDestructive) btn.classList.add('reject');
+    if (action.id === 'skip') btn.classList.add('skip');
+
+    const label = document.createElement('span');
+    label.className = 'action-label';
+    label.textContent = action.label;
+    label.setAttribute('aria-hidden', 'true');
+
+    const key = document.createElement('span');
+    key.className = 'action-key';
+    key.textContent = keyGlyph(action.key);
+    key.setAttribute('aria-hidden', 'true');
+
+    btn.appendChild(label);
+    btn.appendChild(key);
+    btn.addEventListener('click', () => triggerAction(action.id));
+    return btn;
+  }
+
+  function hideDetailsPanel() {
+    detailsSheetEl.hidden = true;
+    detailsSheetEl.setAttribute('aria-hidden', 'true');
+    detailsListEl.innerHTML = '';
+    detailsStatusEl.textContent = '';
+    detailsCopyPathBtn.hidden = true;
+    detailsRevealBtn.hidden = true;
+    detailsForId = null;
+    detailsCache = null;
+  }
+
+  function renderDetailsFields(details) {
+    detailsListEl.innerHTML = '';
+    for (const field of details.fields || []) {
+      const row = document.createElement('div');
+      const dt = document.createElement('dt');
+      dt.textContent = field.label;
+      const dd = document.createElement('dd');
+      dd.textContent = field.value;
+      row.appendChild(dt);
+      row.appendChild(dd);
+      detailsListEl.appendChild(row);
+    }
+    const canReveal = (details.actions || []).some((a) => a.id === 'reveal');
+    detailsRevealBtn.hidden = !canReveal;
+    detailsCopyPathBtn.hidden = !details.path;
+    detailsCache = details;
+  }
+
+  async function loadDetails(itemId, { force } = {}) {
+    if (!itemId) return;
+    if (!force && detailsForId === itemId && detailsCache) {
+      renderDetailsFields(detailsCache);
+      return;
+    }
+    detailsForId = itemId;
+    detailsStatusEl.textContent = 'Loading…';
+    detailsListEl.innerHTML = '';
+    detailsCopyPathBtn.hidden = true;
+    detailsRevealBtn.hidden = true;
+    try {
+      const details = await api(`/api/details/${encodeURIComponent(itemId)}`);
+      if (detailsForId !== itemId) return;
+      detailsStatusEl.textContent = '';
+      renderDetailsFields(details);
+    } catch (err) {
+      if (detailsForId !== itemId) return;
+      detailsStatusEl.textContent = err.message;
+    }
+  }
+
+  async function showDetailsPanel() {
+    if (!state || !state.current) return;
+    if (state.ui && state.ui.supportsDetails === false) {
+      announce('Details are not available for this adapter.');
+      return;
+    }
+    detailsOpen = true;
+    detailsDismissed = false;
+    detailsSheetEl.hidden = false;
+    detailsSheetEl.setAttribute('aria-hidden', 'false');
+    await loadDetails(state.current.id);
+    detailsCloseBtn.focus();
+    announce('File details shown. Press i to hide.');
+  }
+
+  function closeDetailsPanel({ silent } = {}) {
+    detailsOpen = false;
+    detailsDismissed = true;
+    hideDetailsPanel();
+    if (!silent) announce('File details hidden.');
+  }
+
+  async function toggleDetails() {
+    if (detailsOpen) closeDetailsPanel();
+    else await showDetailsPanel();
+  }
+
   function renderActionsRow(actions) {
     actionsRowEl.innerHTML = '';
-    for (const action of actions) {
-      const btn = document.createElement('button');
-      btn.className = 'action-btn';
-      btn.type = 'button';
-      btn.setAttribute('aria-label', `${action.label}, ${keySpoken(action.key)}`);
-      if (action.id === 'keep') btn.classList.add('keep');
-      if (action.isDestructive) btn.classList.add('reject');
-      if (action.id === 'skip') btn.classList.add('skip');
+    organizeRowEl.innerHTML = '';
 
-      const label = document.createElement('span');
-      label.className = 'action-label';
-      label.textContent = action.label;
-      label.setAttribute('aria-hidden', 'true');
+    const primary = (actions || []).filter((a) => a.group !== 'organize');
+    const organize = (actions || []).filter((a) => a.group === 'organize');
 
-      const key = document.createElement('span');
-      key.className = 'action-key';
-      key.textContent = keyGlyph(action.key);
-      key.setAttribute('aria-hidden', 'true');
-
-      btn.appendChild(label);
-      btn.appendChild(key);
-      btn.addEventListener('click', () => triggerAction(action.id));
-      actionsRowEl.appendChild(btn);
+    for (const action of primary) {
+      actionsRowEl.appendChild(makeActionButton(action, 'action-btn'));
     }
 
     const undoBtn = document.createElement('button');
@@ -313,6 +481,33 @@
     undoBtn.appendChild(undoKey);
     undoBtn.addEventListener('click', undo);
     actionsRowEl.appendChild(undoBtn);
+
+    if (organize.length) {
+      organizeRowEl.hidden = false;
+      for (const action of organize) {
+        organizeRowEl.appendChild(makeActionButton(action, 'organize-btn'));
+      }
+    } else {
+      organizeRowEl.hidden = true;
+    }
+
+    if (detailsLink) {
+      detailsLink.disabled = !state || !state.current;
+      detailsLink.hidden = Boolean(state && state.ui && state.ui.supportsDetails === false);
+    }
+
+    updateShortcutList(organize);
+  }
+
+  function updateShortcutList(organizeActions) {
+    if (!shortcutListEl) return;
+    shortcutListEl.querySelectorAll('[data-organize-shortcut]').forEach((el) => el.remove());
+    for (const action of organizeActions || []) {
+      const row = document.createElement('div');
+      row.dataset.organizeShortcut = '1';
+      row.innerHTML = `<dt>${action.key}</dt><dd>Move to ${action.label}</dd>`;
+      shortcutListEl.appendChild(row);
+    }
   }
 
   function renderStats() {
@@ -322,8 +517,9 @@
     progressFillEl.setAttribute('aria-valuemax', String(state.total));
     progressFillEl.setAttribute('aria-valuenow', String(state.reviewed));
     sourceLabelEl.textContent = state.sourceLabel || '';
+    const labels = Object.fromEntries((state.actions || []).map((a) => [a.id, a.label]));
     const countBits = Object.entries(state.counts || {})
-      .map(([id, n]) => `${id}: ${n}`)
+      .map(([id, n]) => `${labels[id] || id}: ${n}`)
       .join(' \u00b7 ');
     statsLineEl.textContent = `${state.reviewed}/${state.total} reviewed${countBits ? '  \u2014  ' + countBits : ''}`;
 
@@ -341,12 +537,14 @@
     if (!state.current) {
       const empty = document.createElement('div');
       empty.className = 'empty-state';
+      const labels = Object.fromEntries((state.actions || []).map((a) => [a.id, a.label]));
       const countBits = Object.entries(state.counts || {})
-        .map(([id, n]) => `<strong>${n}</strong> ${id}`)
+        .map(([id, n]) => `<strong>${n}</strong> ${labels[id] || id}`)
         .join(' &nbsp;&nbsp; ');
       empty.innerHTML = `All done. ${state.total} item(s) reviewed.<div class="summary">${countBits}</div>`;
       deckEl.appendChild(empty);
       renderActionsRow([]);
+      closeDetailsPanel({ silent: true });
       announce(`All done. ${state.total} items reviewed.`);
       return;
     }
@@ -355,6 +553,17 @@
     deckEl.appendChild(card);
     renderActionsRow(state.actions);
     announce(`Item ${position.index} of ${position.total}: ${state.current.title}`);
+
+    const wantDetails =
+      detailsOpen || ((state.ui && state.ui.showDetailsByDefault) && !detailsDismissed);
+    if (wantDetails) {
+      detailsOpen = true;
+      detailsSheetEl.hidden = false;
+      detailsSheetEl.setAttribute('aria-hidden', 'false');
+      loadDetails(state.current.id);
+    } else if (!detailsOpen) {
+      hideDetailsPanel();
+    }
   }
 
   function render() {
@@ -477,6 +686,31 @@
     if (e.target === shortcutsModal) closeShortcuts();
   });
 
+  detailsCloseBtn.addEventListener('click', () => closeDetailsPanel());
+  detailsBackdrop.addEventListener('click', () => closeDetailsPanel());
+  if (detailsLink) {
+    detailsLink.addEventListener('click', () => toggleDetails());
+  }
+  detailsCopyPathBtn.addEventListener('click', async () => {
+    if (!detailsCache || !detailsCache.path) return;
+    try {
+      await navigator.clipboard.writeText(detailsCache.path);
+      detailsStatusEl.textContent = 'Path copied.';
+      announce('Path copied to clipboard.');
+    } catch (err) {
+      detailsStatusEl.textContent = err.message || 'Could not copy path.';
+    }
+  });
+  detailsRevealBtn.addEventListener('click', async () => {
+    if (!state || !state.current) return;
+    try {
+      await api(`/api/reveal/${encodeURIComponent(state.current.id)}`, { method: 'POST' });
+      detailsStatusEl.textContent = 'Revealed in Finder.';
+    } catch (err) {
+      detailsStatusEl.textContent = err.message;
+    }
+  });
+
   document.addEventListener('keydown', (e) => {
     // Shift+? (Shift+/ on most keyboards) toggles shortcuts help
     if (e.key === '?' || (e.shiftKey && e.key === '/')) {
@@ -489,6 +723,11 @@
       closeShortcuts();
       return;
     }
+    if (e.key === 'Escape' && detailsOpen) {
+      e.preventDefault();
+      closeDetailsPanel();
+      return;
+    }
     if (!shortcutsModal.hidden) return;
     if (!state) return;
 
@@ -497,22 +736,26 @@
       undo();
       return;
     }
+
+    if ((e.key === 'i' || e.key === 'I') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      toggleDetails();
+      return;
+    }
+
     if (!state.current || busy) return;
 
-    if (e.key === 'ArrowDown' || e.key === ' ') {
+    // Space is an alias for Skip even if Skip's declared key is ↓.
+    if (e.key === ' ') {
       e.preventDefault();
       triggerAction('skip');
       return;
     }
-    if (e.key === 'ArrowRight') {
+
+    const action = (state.actions || []).find((a) => a.key === e.key);
+    if (action) {
       e.preventDefault();
-      triggerAction('keep');
-      return;
-    }
-    if (e.key === 'ArrowLeft') {
-      e.preventDefault();
-      triggerAction('reject');
-      return;
+      triggerAction(action.id);
     }
   });
 

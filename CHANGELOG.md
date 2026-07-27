@@ -6,6 +6,25 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **PDF / RAW / ZIP previews** on the folder adapter: PDFs show a first-page
+  Quick Look thumb (iframe fallback); camera RAW (`dng`, `cr2`, `nef`, …)
+  uses QL thumbs; `.zip` lists contained files (no extract) via a zero-dep
+  central-directory reader (`lib/zip-list.js`).
+- **Video / CSV** covered in demo seed + preview-type tests; `npm run seed-demo`
+  rebuilds `/tmp/swipe-demo`.
+- **File details** bottom sheet: press `i` / Details / click the filename
+  (path, size, dates; image dimensions / camera on macOS; zip entry summary).
+  Copy path + Reveal in Finder. Setting "Show file details on each card by
+  default". Immich returns EXIF-ish fields from its asset API.
+- **Organize folders (keys 0–9)** on the local folder adapter: map number
+  keys to destination folders in Settings, then press `0`–`9` (or tap the
+  chips) to move the current file there. Undo restores it. Destination
+  dirs inside the source tree are excluded from the queue so sorted files
+  don't bounce back in.
+- OLED dark design tokens (DM Sans + IBM Plex Mono) documented under
+  `design-system/swipeanything/MASTER.md`.
+- New settings field type `folderMap` (and adapter `getActions()`) so
+  organize destinations are schema-driven like everything else.
 - Gitea Actions CI (`.gitea/workflows/ci.yml`): `npm test` + gitleaks on
   every push/PR — the first PR gate for this repo.
 - Settings UI polish: selected-adapter highlight, custom radios (no native

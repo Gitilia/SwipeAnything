@@ -100,7 +100,7 @@ async function queuePayload(s) {
   return {
     adapterId: s.adapterId,
     sourceLabel: s.adapter.describeSource(),
-    actions: s.adapter.constructor.actions,
+    actions: typeof s.adapter.getActions === 'function' ? s.adapter.getActions() : s.adapter.constructor.actions,
     total: s.queue.length,
     reviewed: s.index,
     counts,
@@ -108,6 +108,7 @@ async function queuePayload(s) {
     upcoming: remaining.slice(1, 4),
     canUndo: s.history.length > 0,
     trashInfo,
+    ui: typeof s.adapter.uiHints === 'function' ? s.adapter.uiHints() : {},
   };
 }
 
@@ -190,6 +191,36 @@ app.get('/api/thumbnail/:itemId', async (req, res) => {
   }
 });
 
+app.get('/api/details/:itemId', async (req, res) => {
+  const s = await ensureSession().catch(() => null);
+  if (!s) return res.status(409).json({ error: 'Not configured yet' });
+  if (typeof s.adapter.getDetails !== 'function') {
+    return res.status(501).json({ error: 'Details not supported by this adapter' });
+  }
+  try {
+    const details = await s.adapter.getDetails(req.params.itemId);
+    if (!details) return res.status(404).json({ error: 'No details available' });
+    res.json(details);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/reveal/:itemId', async (req, res) => {
+  const s = await ensureSession().catch(() => null);
+  if (!s) return res.status(409).json({ error: 'Not configured yet' });
+  if (typeof s.adapter.reveal !== 'function') {
+    return res.status(501).json({ error: 'Reveal not supported by this adapter' });
+  }
+  try {
+    const handled = await s.adapter.reveal(req.params.itemId);
+    if (!handled) return res.status(501).json({ error: 'Reveal not available on this platform' });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 app.post('/api/action', async (req, res) => {
   const s = await ensureSession().catch(() => null);
   if (!s) return res.status(409).json({ error: 'Not configured yet' });
@@ -198,7 +229,9 @@ app.post('/api/action', async (req, res) => {
   if (!item || item.id !== itemId) {
     return res.status(409).json({ error: 'Item is stale, refresh the queue' });
   }
-  const validAction = s.adapter.constructor.actions.some((a) => a.id === actionId);
+  const actions =
+    typeof s.adapter.getActions === 'function' ? s.adapter.getActions() : s.adapter.constructor.actions;
+  const validAction = actions.some((a) => a.id === actionId);
   if (!validAction) {
     return res.status(400).json({ error: `Unknown action: ${actionId}` });
   }

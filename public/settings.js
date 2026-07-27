@@ -21,11 +21,42 @@
   }
 
   function fieldValue(field) {
+    if (field.type === 'folderMap') {
+      const map = {};
+      for (let i = 0; i <= 9; i += 1) {
+        const key = String(i);
+        const pathEl = document.getElementById(`field_${field.key}_${key}_path`);
+        const labelEl = document.getElementById(`field_${field.key}_${key}_label`);
+        if (!pathEl) continue;
+        const folderPath = pathEl.value.trim();
+        if (!folderPath) continue;
+        const label = labelEl ? labelEl.value.trim() : '';
+        map[key] = label ? { path: folderPath, label } : { path: folderPath };
+      }
+      return map;
+    }
     const el = document.getElementById(`field_${field.key}`);
     if (!el) return field.default;
     if (field.type === 'checkbox') return el.checked;
     if (field.type === 'number') return Number(el.value);
     return el.value;
+  }
+
+  function attachBrowse(browseBtn, inputId, hintEl) {
+    browseBtn.addEventListener('click', async () => {
+      if (hintEl) hintEl.textContent = '';
+      browseBtn.disabled = true;
+      browseBtn.textContent = 'Waiting for Finder\u2026';
+      try {
+        const { path: chosen } = await api('/api/browse-folder', { method: 'POST' });
+        document.getElementById(inputId).value = chosen;
+      } catch (err) {
+        if (hintEl && err.message !== 'Cancelled') hintEl.textContent = err.message;
+      } finally {
+        browseBtn.disabled = false;
+        browseBtn.textContent = 'Browse\u2026';
+      }
+    });
   }
 
   function escapeAttr(value) {
@@ -58,22 +89,44 @@
         </div>
         <div class="field-hint" data-browse-hint-for="field_${field.key}"></div>
       `;
-      const browseBtn = wrap.querySelector(`[data-browse-for="field_${field.key}"]`);
-      const hintEl = wrap.querySelector(`[data-browse-hint-for="field_${field.key}"]`);
-      browseBtn.addEventListener('click', async () => {
-        hintEl.textContent = '';
-        browseBtn.disabled = true;
-        browseBtn.textContent = 'Waiting for Finder\u2026';
-        try {
-          const { path: chosen } = await api('/api/browse-folder', { method: 'POST' });
-          document.getElementById(`field_${field.key}`).value = chosen;
-        } catch (err) {
-          if (err.message !== 'Cancelled') hintEl.textContent = err.message;
-        } finally {
-          browseBtn.disabled = false;
-          browseBtn.textContent = 'Browse\u2026';
-        }
-      });
+      attachBrowse(
+        wrap.querySelector(`[data-browse-for="field_${field.key}"]`),
+        `field_${field.key}`,
+        wrap.querySelector(`[data-browse-hint-for="field_${field.key}"]`)
+      );
+      return wrap;
+    }
+
+    if (field.type === 'folderMap') {
+      wrap.className = 'form-field folder-map';
+      const heading = document.createElement('div');
+      heading.className = 'folder-map-heading';
+      heading.innerHTML = `<span>${field.label}</span><span class="folder-map-hint">Leave a row blank to disable that key. Press the number while swiping to move the file there.</span>`;
+      wrap.appendChild(heading);
+
+      const map = value && typeof value === 'object' ? value : {};
+      for (let i = 0; i <= 9; i += 1) {
+        const key = String(i);
+        const entry = map[key] || {};
+        const folderPath = typeof entry === 'string' ? entry : entry.path || '';
+        const label = typeof entry === 'object' ? entry.label || '' : '';
+        const row = document.createElement('div');
+        row.className = 'folder-map-row';
+        row.innerHTML = `
+          <span class="folder-map-key" aria-hidden="true">${key}</span>
+          <input type="text" id="field_${field.key}_${key}_label"
+            placeholder="Label (optional)" value="${escapeAttr(label)}"
+            aria-label="Label for key ${key}">
+          <div class="folder-field-row">
+            <input type="text" id="field_${field.key}_${key}_path"
+              placeholder="/path/to/folder" value="${escapeAttr(folderPath)}"
+              aria-label="Folder path for key ${key}">
+            <button type="button" class="secondary-btn" data-browse-for="field_${field.key}_${key}_path">Browse&hellip;</button>
+          </div>
+        `;
+        attachBrowse(row.querySelector('[data-browse-for]'), `field_${field.key}_${key}_path`, null);
+        wrap.appendChild(row);
+      }
       return wrap;
     }
 

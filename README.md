@@ -28,6 +28,11 @@ see [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Features
 
 - Swipe (touch/mouse drag) or use the keyboard
+- **Organize, not just triage:** map keys `0`–`9` to destination folders in
+  Settings, then press a number (or tap the chip) to move the current file
+  there. Undo brings it back.
+- **Inspect before deciding:** press `i` for path, size, dates, and (on
+  macOS) image dimensions / camera metadata; Reveal in Finder + Copy path.
 - Non-destructive by default: "reject" moves files to a `.swipeanything-trash/`
   folder (or, for Immich, the library's own trash) — never a hard delete.
   A separate, confirm-guarded "Empty trash" action is the only place that
@@ -83,13 +88,15 @@ live server. The same suite is the PR gate in [`.gitea/workflows/ci.yml`](.gitea
 
 | Action | Gesture | Key | Button |
 |---|---|---|---|
-| Keep | Drag right | `→` | Keep → |
+| Keep (leave in place) | Drag right | `→` | Keep → |
 | Reject (moves to trash) | Drag left | `←` | Reject ← |
 | Skip / next (no decision) | — | `↓` or `Space` | Skip ↓ |
 | Undo / go back | — | `↑` or `Ctrl/Cmd+Z` | Undo ↑ |
+| Move to organize folder | — | `0`–`9` (if configured) | chips under the main buttons |
+| File details (path, size, dimensions, …) | — | `i` | Details in header |
 | Shortcuts help | — | `Shift+?` | `?` in header |
 
-Keep/Reject (button or key) flash the KEEP/REJECT stamp and fling the card, same as a drag.
+Keep/Reject (button or key) flash the KEEP/REJECT stamp and fling the card, same as a drag. Numbered organize actions flash the destination label and lift the card away. Details open as a bottom sheet over the card so the layout doesn’t jump.
 
 ## Adapters
 
@@ -99,6 +106,19 @@ Point at any local folder. Optionally recurse into subfolders and filter by
 extension. "Reject" moves the file into `.swipeanything-trash/` next to the
 source; "Empty trash" (a separate, confirm-guarded action shown in the header
 once there's anything to empty) permanently deletes what's in there.
+
+In Settings, fill any of the **Organize folders (keys 0–9)** rows with a
+destination path (and optional label). Only configured keys appear as
+actions — leave a row blank to disable it. Destination folders are created
+if missing, and if a destination sits inside the source tree it is skipped
+when listing so sorted files don't reappear in the queue.
+
+Press `i` (or **Details** in the header) to inspect the current file before
+deciding: full path, size, dates, and on macOS image dimensions / camera /
+capture date when Spotlight knows them. Details open as a bottom sheet over
+the card. **Reveal in Finder** and **Copy path** are there too. Turn on
+**Show file details on each card by default** in Settings if you always want
+the sheet open.
 
 ### Immich
 
