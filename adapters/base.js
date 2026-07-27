@@ -29,7 +29,7 @@ class Adapter {
    *   {
    *     key: string,
    *     label: string,
-   *     type: 'text' | 'password' | 'checkbox' | 'number' | 'select' | 'folder',
+   *     type: 'text' | 'password' | 'checkbox' | 'number' | 'select' | 'folder' | 'folderMap',
    *     default?: any,
    *     options?: Array<{ value: string, label: string }>, // for type 'select'
    *     placeholder?: string,
@@ -37,19 +37,21 @@ class Adapter {
    *   }
    * `type: 'folder'` renders a text field plus a "Browse..." button backed
    * by a native folder picker where available (see server.js /api/browse-folder).
+   * `type: 'folderMap'` renders keys 0–9, each with an optional label and a
+   * folder path (for organize-into-buckets flows).
    */
   static configSchema = [];
 
   /**
-   * Actions available on every card. The first two are the swipe defaults
-   * (right = keep, left = reject); adapters may add more, e.g. a third
-   * "later" bucket, as long as each has a distinct `key` and `direction`.
+   * Default actions available on every card. Prefer overriding getActions()
+   * when the set depends on settings (e.g. numbered destination folders).
    *   {
    *     id: string,
    *     label: string,
    *     key: string,        // KeyboardEvent.key that triggers it
-   *     direction: 'left' | 'right' | 'up' | 'down',
+   *     direction?: 'left' | 'right' | 'up' | 'down',
    *     isDestructive?: boolean,
+   *     group?: 'primary' | 'organize',  // UI layout hint
    *   }
    */
   static actions = [
@@ -59,6 +61,14 @@ class Adapter {
 
   constructor(settings = {}) {
     this.settings = settings;
+  }
+
+  /**
+   * Actions for the current session. Defaults to the static `actions` list;
+   * override when actions depend on settings (folder destinations, etc.).
+   */
+  getActions() {
+    return this.constructor.actions;
   }
 
   /**
@@ -75,7 +85,7 @@ class Adapter {
    *   id: string,
    *   title: string,
    *   subtitle?: string,
-   *   previewType?: 'image' | 'audio' | 'video' | 'text' | 'none',
+   *   previewType?: 'image' | 'audio' | 'video' | 'pdf' | 'archive' | 'text' | 'none',
    *   meta?: Record<string, string | number>,
    * }>>}
    */
@@ -117,6 +127,22 @@ class Adapter {
   }
 
   /**
+   * Optional: richer details for the inspect-before-deciding panel.
+   * @returns {Promise<{ fields: Array<{ label: string, value: string }>, path?: string, actions?: Array<{ id: string, label: string }> } | null>}
+   */
+  async getDetails(itemId) {
+    return null;
+  }
+
+  /**
+   * Optional: reveal / open the item in the native file manager.
+   * Return true if handled.
+   */
+  async reveal(itemId) {
+    return false;
+  }
+
+  /**
    * Optional: describes a reversible "trash" this adapter maintains, so
    * the UI can offer an explicit, confirm-guarded "Empty trash" action.
    * Return null if this adapter has no such concept.
@@ -134,6 +160,11 @@ class Adapter {
   /** Optional short string describing the source, shown in the UI header. */
   describeSource() {
     return '';
+  }
+
+  /** Optional UI hints (e.g. showDetailsByDefault) merged into /api/queue. */
+  uiHints() {
+    return {};
   }
 }
 

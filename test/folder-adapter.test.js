@@ -45,6 +45,38 @@ test('list() filters by extension allowlist', async () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('list() sets previewType for video, audio, csv, pdf, raw, and unknown binary', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'swipeanything-preview-'));
+  fs.writeFileSync(path.join(dir, 'clip.mp4'), 'fake-mp4-bytes');
+  fs.writeFileSync(path.join(dir, 'clip.MOV'), 'fake-mov-bytes'); // case-insensitive
+  fs.writeFileSync(path.join(dir, 'song.mp3'), 'fake-mp3-bytes');
+  fs.writeFileSync(path.join(dir, 'rows.csv'), 'a,b\n1,2\n');
+  fs.writeFileSync(path.join(dir, 'scan.pdf'), '%PDF-1.0');
+  fs.writeFileSync(path.join(dir, 'shot.dng'), 'fake-dng');
+  fs.writeFileSync(path.join(dir, 'shot.CR2'), 'fake-cr2');
+  fs.writeFileSync(path.join(dir, 'bundle.zip'), 'PK\x03\x04');
+  fs.writeFileSync(path.join(dir, 'sheet.xlsx'), 'PK\x03\x04-not-really-xlsx');
+  fs.writeFileSync(path.join(dir, 'photo.webp'), 'fake-webp');
+
+  const adapter = new FolderAdapter({ folderPath: dir, extensions: '' });
+  await adapter.init();
+  const byTitle = Object.fromEntries((await adapter.list()).map((i) => [i.title, i.previewType]));
+
+  assert.equal(byTitle['clip.mp4'], 'video');
+  assert.equal(byTitle['clip.MOV'], 'video');
+  assert.equal(byTitle['song.mp3'], 'audio');
+  assert.equal(byTitle['rows.csv'], 'text');
+  assert.equal(byTitle['scan.pdf'], 'pdf');
+  assert.equal(byTitle['shot.dng'], 'image');
+  assert.equal(byTitle['shot.CR2'], 'image');
+  assert.equal(byTitle['bundle.zip'], 'archive');
+  assert.equal(byTitle['photo.webp'], 'image');
+  // Excel is a zip container — no in-browser preview yet (generic card).
+  assert.equal(byTitle['sheet.xlsx'], 'none');
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test('reject moves the file to the trash dir, undo restores it', async () => {
   const dir = makeFixture();
   const adapter = new FolderAdapter({ folderPath: dir, extensions: '' });
@@ -119,4 +151,100 @@ test('streamPreview serves an existing file via res.sendFile', async () => {
 test('init() throws a clear error for a missing folder', async () => {
   const adapter = new FolderAdapter({ folderPath: '/definitely/does/not/exist' });
   await assert.rejects(() => adapter.init(), /Folder not found/);
+});
+
+test('getActions() adds organize actions only for configured destination keys', async () => {
+  const dir = makeFixture();
+  const destA = fs.mkdtempSync(path.join(os.tmpdir(), 'swipeanything-dest-a-'));
+  const destB = fs.mkdtempSync(path.join(os.tmpdir(), 'swipeanything-dest-b-'));
+  const adapter = new FolderAdapter({
+    folderPath: dir,
+    extensions: '',
+    destinations: {
+      1: { path: destA, label: 'Vacation' },
+      7: destB,
+    },
+  });
+  await adapter.init();
+  const actions = adapter.getActions();
+  assert.ok(actions.some((a) => a.id === 'keep'));
+  assert.ok(actions.some((a) => a.id === 'move-1' && a.label === 'Vacation' && a.key === '1'));
+  assert.ok(actions.some((a) => a.id === 'move-7' && a.key === '7'));
+  assert.equal(actions.filter((a) => a.group === 'organize').length, 2);
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(destA, { recursive: true, force: true });
+  fs.rmSync(destB, { recursive: true, force: true });
+});
+
+test('move-N moves the file into the destination folder and undo restores it', async () => {
+  const dir = makeFixture();
+  const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'swipeanything-dest-'));
+  const adapter = new FolderAdapter({
+    folderPath: dir,
+    extensions: '',
+    destinations: { 2: { path: dest, label: 'Work' } },
+  });
+  await adapter.init();
+  const items = await adapter.list();
+  const target = items.find((i) => i.title === 'keep-me.txt');
+  const record = await adapter.applyAction(target, 'move-2');
+  assert.equal(record.type, 'move');
+  assert.equal(record.destKey, '2');
+  assert.ok(!fs.existsSync(path.join(dir, 'keep-me.txt')));
+  assert.ok(fs.existsSync(path.join(dest, 'keep-me.txt')));
+  await adapter.undo(record);
+  assert.ok(fs.existsSync(path.join(dir, 'keep-me.txt')));
+  assert.ok(!fs.existsSync(path.join(dest, 'keep-me.txt')));
+  fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(dest, { recursive: true, force: true });
+});
+
+test('list() skips destination folders that sit inside the source tree', async () => {
+  const dir = makeFixture();
+  const nestedDest = path.join(dir, 'sorted');
+  fs.mkdirSync(nestedDest);
+  fs.writeFileSync(path.join(nestedDest, 'already-sorted.txt'), 'done');
+  const adapter = new FolderAdapter({
+    folderPath: dir,
+    extensions: '',
+    recursive: true,
+    destinations: { 0: { path: nestedDest, label: 'Sorted' } },
+  });
+  await adapter.init();
+  const titles = (await adapter.list()).map((i) => i.title);
+  assert.ok(!titles.includes('already-sorted.txt'));
+  assert.ok(titles.includes('keep-me.txt'));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('move-N refuses an unconfigured key', async () => {
+  const dir = makeFixture();
+  const adapter = new FolderAdapter({ folderPath: dir, extensions: '', destinations: {} });
+  await adapter.init();
+  const items = await adapter.list();
+  await assert.rejects(() => adapter.applyAction(items[0], 'move-3'), /No destination configured/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('getDetails() returns path, size, and type fields', async () => {
+  const dir = makeFixture();
+  const adapter = new FolderAdapter({ folderPath: dir, extensions: '' });
+  await adapter.init();
+  const items = await adapter.list();
+  const target = items.find((i) => i.title === 'keep-me.txt');
+  const details = await adapter.getDetails(target.id);
+  const labels = details.fields.map((f) => f.label);
+  assert.ok(labels.includes('Path'));
+  assert.ok(labels.includes('Size'));
+  assert.ok(labels.includes('Type'));
+  assert.equal(details.path, path.join(dir, 'keep-me.txt'));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('uiHints() reflects showDetailsByDefault', async () => {
+  const dir = makeFixture();
+  const adapter = new FolderAdapter({ folderPath: dir, extensions: '', showDetailsByDefault: true });
+  await adapter.init();
+  assert.deepEqual(adapter.uiHints(), { showDetailsByDefault: true, supportsDetails: true });
+  fs.rmSync(dir, { recursive: true, force: true });
 });

@@ -137,3 +137,16 @@ test('GET /api/preview/:itemId 404s for an unknown item', async () => {
   const res = await fetch(`${base}/api/preview/${missingId}`);
   assert.equal(res.status, 404);
 });
+
+test('GET /api/details/:itemId returns file metadata fields', async () => {
+  await api('/api/rescan', { method: 'POST' });
+  const queue = await api('/api/queue');
+  assert.equal(queue.status, 200);
+  assert.ok(queue.body.current);
+  assert.equal(queue.body.ui.supportsDetails, true);
+  const { status, body } = await api(`/api/details/${queue.body.current.id}`);
+  assert.equal(status, 200);
+  assert.ok(Array.isArray(body.fields));
+  assert.ok(body.fields.some((f) => f.label === 'Path'));
+  assert.ok(body.fields.some((f) => f.label === 'Size'));
+});

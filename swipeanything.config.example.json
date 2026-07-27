@@ -3,7 +3,12 @@
   "settings": {
     "folderPath": "/absolute/path/to/a/folder",
     "recursive": false,
-    "extensions": "jpg,jpeg,png,gif,webp,heic,bmp",
-    "trashDirName": ".swipeanything-trash"
+    "extensions": "jpg,jpeg,png,gif,webp,heic,bmp,pdf,dng,cr2,nef,arw,mp4,mov",
+    "trashDirName": ".swipeanything-trash",
+    "destinations": {
+      "1": { "label": "Keep / favorites", "path": "/absolute/path/to/keep" },
+      "2": { "label": "Vacation", "path": "/absolute/path/to/vacation" },
+      "3": { "path": "/absolute/path/to/work" }
+    }
   }
 }

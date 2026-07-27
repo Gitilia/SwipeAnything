@@ -21,12 +21,16 @@ work for any adapter that implements the contract below.
        { key: 'someSetting', label: 'Some setting', type: 'text', required: true },
      ];
 
-     // Optional: override the default keep/reject pair, e.g. add a third
-     // "later" action. Each needs a distinct key and direction.
+     // Optional: override the default keep/reject pair. Prefer getActions()
+     // when the set depends on settings (see folder.js destinations 0–9).
      static actions = [
-       { id: 'keep', label: 'Keep', key: 'ArrowRight', direction: 'right' },
-       { id: 'reject', label: 'Reject', key: 'ArrowLeft', direction: 'left', isDestructive: true },
+       { id: 'keep', label: 'Keep', key: 'ArrowRight', direction: 'right', group: 'primary' },
+       { id: 'reject', label: 'Reject', key: 'ArrowLeft', direction: 'left', isDestructive: true, group: 'primary' },
      ];
+
+     getActions() {
+       return this.constructor.actions; // or append setting-driven actions
+     }
 
      async init() {
        // Validate settings / open a connection. Throw a descriptive Error
