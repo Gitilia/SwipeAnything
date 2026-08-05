@@ -1,5 +1,10 @@
 # Contributing
 
+## Public mirror & issues
+
+- **GitHub:** [github.com/Gitilia/SwipeAnything](https://github.com/Gitilia/SwipeAnything) — issues and small PRs welcome.
+- Day-to-day CI runs on a private forge; the public repo is a push mirror. Prefer an issue before large adapter PRs.
+
 Adapters are the whole point of this project — the swipe UI, keyboard
 shortcuts, drag gestures, undo stack, and settings form are all generic and
 work for any adapter that implements the contract below.

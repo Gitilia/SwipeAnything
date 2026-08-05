@@ -1,9 +1,8 @@
 # SwipeAnything
 
-Unleash the swipe on anything. Point it at a folder or a photo library, and
-(via adapters) at your inbox, a database table, or whatever else you need to
-triage — one card at a time, right = keep, left = reject, like a dating app
-for your backlog.
+Triage any collection one card at a time: right = keep, left = reject. Point it
+at a folder, a photo library, or (via adapters) an inbox, a database table, or
+another queue source.
 
 ## Why
 
@@ -27,31 +26,19 @@ see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Features
 
-- Swipe (touch/mouse drag) or use the keyboard
-- **Organize, not just triage:** map keys `0`–`9` to destination folders in
-  Settings, then press a number (or tap the chip) to move the current file
-  there. Undo brings it back.
-- **Inspect before deciding:** press `i` for path, size, dates, and (on
-  macOS) image dimensions / camera metadata; Reveal in Finder + Copy path.
-- Non-destructive by default: "reject" moves files to a `.swipeanything-trash/`
-  folder (or, for Immich, the library's own trash) — never a hard delete.
-  A separate, confirm-guarded "Empty trash" action is the only place that
-  permanently deletes anything.
-- Undo, any number of steps back
-- Session resume: closing the tab, reloading, or restarting the server picks
-  up right where you left off (as long as the underlying items haven't changed)
-- Real thumbnails on macOS (via Quick Look), including HEIC/HEIF and video
-  poster frames, with automatic fallback to the original file everywhere else
-- Native "Browse…" folder picker on macOS; type a path anywhere else
-- Live progress + per-action counts
-- Generic settings UI: every adapter declares its own config fields and gets
-  a form for free — no adapter-specific frontend code required
-- Accessible by default: live region announcements per card, labeled action
-  buttons, a focus-trapped shortcuts dialog, visible focus rings, and a real
-  `role="progressbar"`
-- Zero build step: Node.js + Express + vanilla HTML/CSS/JS
-- `npm test` runs a real test suite (folder adapter, Immich adapter with a
-  mocked API, and the HTTP API end-to-end) — no separate test server to stand up
+- Swipe (touch/mouse drag) or keyboard shortcuts
+- Organize with keys `0`–`9`: map destination folders in Settings, then press a number or tap the chip to move the current file (undo brings it back)
+- Inspect before deciding: press `i` for path, size, dates, and (on macOS) image dimensions and camera metadata; Reveal in Finder and Copy path
+- Non-destructive reject: moves files to `.swipeanything-trash/` (or Immich library trash); permanent delete only via confirm-guarded Empty trash
+- Undo any number of steps back
+- Session resume after tab close, reload, or server restart (while underlying items are unchanged)
+- Thumbnails on macOS via Quick Look (HEIC/HEIF, video poster frames); falls back to original file elsewhere
+- Native Browse folder picker on macOS; type a path on other platforms
+- Live progress and per-action counts
+- Generic settings UI: each adapter declares config fields and gets a form without custom frontend code
+- Accessibility: live region announcements, labeled buttons, focus-trapped shortcuts dialog, visible focus rings, `role="progressbar"`
+- Zero build step: Node.js, Express, vanilla HTML/CSS/JS
+- `npm test` covers folder adapter, Immich adapter (mocked API), and HTTP API end-to-end
 - CI on every push/PR (Gitea Actions): `npm test` + gitleaks
 
 ## Quickstart
