@@ -19,10 +19,10 @@ what's behind them. Write a new adapter and you get the whole UI for free.
 
 ## Status
 
-Two adapters ship today — **local folder** and **Immich** (self-hosted photo
-library) — proving the framework works for both a filesystem and a remote
-API. Email, database-row, and other adapters are welcome as contributions;
-see [CONTRIBUTING.md](CONTRIBUTING.md).
+Three adapters ship today — **local folder**, **Immich** (self-hosted photo
+library), and **Navidrome** (music library low-star triage) — proving the
+framework works for filesystem and remote APIs. Email, database-row, and
+other adapters are welcome as contributions; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Features
 
@@ -38,7 +38,7 @@ see [CONTRIBUTING.md](CONTRIBUTING.md).
 - Generic settings UI: each adapter declares config fields and gets a form without custom frontend code
 - Accessibility: live region announcements, labeled buttons, focus-trapped shortcuts dialog, visible focus rings, `role="progressbar"`
 - Zero build step: Node.js, Express, vanilla HTML/CSS/JS
-- `npm test` covers folder adapter, Immich adapter (mocked API), and HTTP API end-to-end
+- `npm test` covers folder, Immich, and Navidrome adapters (mocked API) plus HTTP API end-to-end
 - CI on every push/PR (Gitea Actions): `npm test` + gitleaks
 
 ## Quickstart
@@ -116,6 +116,43 @@ This is an early adapter — tested against the documented API shape, not
 every Immich version, so please open an issue/PR if something doesn't match
 your server.
 
+### Navidrome
+
+Point at a [Navidrome](https://www.navidrome.org) server with username /
+password. Loads songs rated **0–2★** (configurable), autoplays each track,
+and lets you:
+
+| Action | Effect |
+|---|---|
+| Keep → / `3` | Set **3★** |
+| `4` / `5` | Set **4★** / **5★** |
+| Reject ← | Add to playlist **Swipe Rejected (low stars)** (optional: quarantine file under `musicRoot`) |
+| Skip ↓ | Leave rating alone |
+
+Songs already on the reject playlist are skipped on the next session. Undo
+restores the previous rating or removes the song from that playlist.
+
+Example `swipeanything.config.json`:
+
+```json
+{
+  "adapter": "navidrome",
+  "settings": {
+    "serverUrl": "https://navi.example.com",
+    "username": "ilia",
+    "password": "…",
+    "maxRating": "2",
+    "take": 150,
+    "musicRoot": "/mnt/media/music",
+    "trashDirName": ".swipe-music-trash"
+  }
+}
+```
+
+`musicRoot` is optional. Without it, reject is playlist-only (nothing deleted
+from disk). With it mounted locally (NFS/SMB), reject can also move the file
+into the quarantine folder; Empty trash permanently deletes that folder.
+
 ## How adapters work
 
 Every adapter implements a small contract (`adapters/base.js`): declare a
@@ -137,6 +174,7 @@ server.js                          Express app: API + static file serving
 adapters/base.js                   Adapter contract every adapter implements
 adapters/folder.js                 Reference adapter: local files/folders
 adapters/immich.js                 Reference adapter: remote API (Immich)
+adapters/navidrome.js              Navidrome low-star music triage
 adapters/registry.js               Adapter registration
 lib/thumbnails.js                  macOS Quick Look-based thumbnail cache
 public/                            Vanilla HTML/CSS/JS swipe UI + settings UI

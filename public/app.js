@@ -157,6 +157,7 @@
       case 'audio': {
         const audio = document.createElement('audio');
         audio.controls = true;
+        audio.autoplay = true;
         audio.src = src;
         wrap.style.padding = '40px 10px';
         wrap.appendChild(audio);
