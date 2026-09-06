@@ -37,8 +37,8 @@ class NavidromeAdapter extends Adapter {
       default: '2',
       options: [
         { value: '0', label: 'Unrated / 0★ only' },
-        { value: '1', label: '0–1★' },
-        { value: '2', label: '0–2★' },
+        { value: '1', label: 'Unrated–1★' },
+        { value: '2', label: 'Unrated–2★' },
       ],
     },
     {
@@ -193,17 +193,32 @@ class NavidromeAdapter extends Adapter {
     return new Set((tracks || []).map((t) => t.id));
   }
 
-  async _fetchRating(rating) {
+  /**
+   * Songs with no annotation sort first when ordered by rating ASC (rating=null),
+   * then 0, 1, 2… Stop once we pass maxRating.
+   */
+  async _fetchLowRated() {
     const out = [];
     const page = 200;
     let start = 0;
     for (;;) {
-      const res = await this._api(`/api/song?_start=${start}&_end=${start + page}&_sort=title&_order=ASC&rating=${rating}`);
+      const res = await this._api(
+        `/api/song?_start=${start}&_end=${start + page}&_sort=rating&_order=ASC&missing=false`
+      );
       const total = Number(res.headers.get('X-Total-Count') || 0);
       const batch = await res.json();
-      out.push(...(batch || []));
+      if (!batch || batch.length === 0) break;
+      let pastMax = false;
+      for (const song of batch) {
+        const rating = song.rating == null ? 0 : Number(song.rating);
+        if (rating > this.maxRating) {
+          pastMax = true;
+          break;
+        }
+        out.push(song);
+      }
       start += page;
-      if (!batch || batch.length === 0 || start >= total || out.length >= this.take * 3) break;
+      if (pastMax || start >= total || out.length >= this.take * 4) break;
     }
     return out;
   }
@@ -222,11 +237,7 @@ class NavidromeAdapter extends Adapter {
 
   async list() {
     const rejected = await this._rejectedIds();
-    const songs = [];
-    for (let r = 0; r <= this.maxRating; r += 1) {
-      const batch = await this._fetchRating(r);
-      songs.push(...batch);
-    }
+    const songs = await this._fetchLowRated();
     const items = [];
     for (const song of songs) {
       if (rejected.has(song.id)) continue;
@@ -240,7 +251,7 @@ class NavidromeAdapter extends Adapter {
         subtitle: [song.artist, song.album].filter(Boolean).join(' — ') || undefined,
         previewType: 'audio',
         meta: {
-          rating: `${rating}★`,
+          rating: song.rating == null ? 'unrated' : `${rating}★`,
           duration: dur,
           year: song.year || undefined,
           path: song.path || undefined,

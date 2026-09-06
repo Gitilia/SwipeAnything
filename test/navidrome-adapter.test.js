@@ -75,22 +75,18 @@ test('list() loads ≤maxRating songs and skips reject-playlist tracks', async (
       if (url.includes('/api/playlist/pl-reject/tracks')) {
         return jsonResponse([{ id: 'skip-me' }]);
       }
-      if (url.includes('/api/song') && url.includes('rating=1')) {
+      if (url.includes('/api/song') && url.includes('_sort=rating')) {
         return jsonResponse(
           [
+            { id: 'unrated', title: 'Bare', artist: 'X', album: 'Y', rating: null, duration: 30 },
             { id: 'skip-me', title: 'Nope', artist: 'A', album: 'B', rating: 1, duration: 10 },
             { id: 'keep-me', title: 'Song', artist: 'Artist', album: 'Album', rating: 1, duration: 120 },
+            { id: 'too-high', title: 'Good', artist: 'Z', album: 'Z', rating: 3, duration: 90 },
           ],
           true,
           200,
-          { total: 2 }
+          { total: 4 }
         );
-      }
-      if (url.includes('/api/song') && url.includes('rating=0')) {
-        return jsonResponse([], true, 200, { total: 0 });
-      }
-      if (url.includes('/api/song') && url.includes('rating=2')) {
-        return jsonResponse([], true, 200, { total: 0 });
       }
       return jsonResponse({}, false, 404);
     },
@@ -104,11 +100,13 @@ test('list() loads ≤maxRating songs and skips reject-playlist tracks', async (
       });
       await adapter.init();
       const items = await adapter.list();
-      assert.equal(items.length, 1);
-      assert.equal(items[0].id, 'keep-me');
-      assert.equal(items[0].previewType, 'audio');
-      assert.equal(items[0].meta.rating, '1★');
-      assert.match(items[0].subtitle, /Artist/);
+      assert.equal(items.length, 2);
+      assert.equal(items[0].id, 'unrated');
+      assert.equal(items[0].meta.rating, 'unrated');
+      assert.equal(items[1].id, 'keep-me');
+      assert.equal(items[1].previewType, 'audio');
+      assert.equal(items[1].meta.rating, '1★');
+      assert.match(items[1].subtitle, /Artist/);
     }
   );
 });
