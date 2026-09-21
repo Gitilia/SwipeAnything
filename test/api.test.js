@@ -46,6 +46,7 @@ test('GET /api/adapters lists the registered adapters', async () => {
   assert.equal(status, 200);
   assert.ok(body.some((a) => a.id === 'folder'));
   assert.ok(body.some((a) => a.id === 'immich'));
+  assert.ok(body.some((a) => a.id === 'navidrome'));
 });
 
 test('GET /api/queue returns 409 before configuration', async () => {

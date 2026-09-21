@@ -155,11 +155,139 @@
         break;
       }
       case 'audio': {
+        // Custom seek UI (native <audio controls> scrubber fights card swipe /
+        // shadow-DOM hit targets and often jumps back to 0:00).
         const audio = document.createElement('audio');
-        audio.controls = true;
-        audio.src = src;
-        wrap.style.padding = '40px 10px';
+        audio.preload = 'auto';
+        wrap.classList.add('audio-preview');
+        wrap.style.padding = '24px 16px';
+        wrap.style.width = '100%';
+        wrap.style.boxSizing = 'border-box';
+
+        const status = document.createElement('div');
+        status.className = 'audio-status';
+        status.textContent = 'Loading audio…';
+
+        const timeLabel = document.createElement('div');
+        timeLabel.className = 'audio-time';
+        timeLabel.textContent = '0:00 / ?:??';
+
+        const seek = document.createElement('input');
+        seek.type = 'range';
+        seek.min = '0';
+        seek.max = '1000';
+        seek.value = '0';
+        seek.step = '1';
+        seek.disabled = true;
+        seek.setAttribute('aria-label', 'Seek');
+        seek.className = 'audio-seek';
+
+        const btnRow = document.createElement('div');
+        btnRow.className = 'audio-btns';
+        const playBtn = document.createElement('button');
+        playBtn.type = 'button';
+        playBtn.textContent = 'Play';
+        const backBtn = document.createElement('button');
+        backBtn.type = 'button';
+        backBtn.textContent = '−10s';
+        const fwdBtn = document.createElement('button');
+        fwdBtn.type = 'button';
+        fwdBtn.textContent = '+10s';
+        for (const b of [backBtn, playBtn, fwdBtn]) btnRow.appendChild(b);
+
+        wrap.appendChild(status);
+        wrap.appendChild(timeLabel);
+        wrap.appendChild(seek);
+        wrap.appendChild(btnRow);
         wrap.appendChild(audio);
+
+        // Never let card-swipe steal pointer events from the player.
+        for (const evt of ['pointerdown', 'pointermove', 'pointerup', 'click', 'touchstart']) {
+          wrap.addEventListener(evt, (e) => e.stopPropagation());
+        }
+
+        const fmt = (sec) => {
+          if (!Number.isFinite(sec) || sec < 0) return '?:??';
+          const s = Math.floor(sec);
+          return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+        };
+
+        let objectUrl = null;
+        let scrubbing = false;
+        const revoke = () => {
+          if (objectUrl) {
+            URL.revokeObjectURL(objectUrl);
+            objectUrl = null;
+          }
+        };
+        const obs = new MutationObserver(() => {
+          if (!document.body.contains(wrap)) {
+            revoke();
+            obs.disconnect();
+          }
+        });
+        obs.observe(document.body, { childList: true, subtree: true });
+
+        const syncLabel = () => {
+          timeLabel.textContent = `${fmt(audio.currentTime)} / ${fmt(audio.duration)}`;
+        };
+
+        seek.addEventListener('pointerdown', () => {
+          scrubbing = true;
+        });
+        seek.addEventListener('pointerup', () => {
+          scrubbing = false;
+        });
+        seek.addEventListener('input', () => {
+          if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+          audio.currentTime = (Number(seek.value) / 1000) * audio.duration;
+          syncLabel();
+        });
+        audio.addEventListener('timeupdate', () => {
+          if (scrubbing) return;
+          if (Number.isFinite(audio.duration) && audio.duration > 0) {
+            seek.value = String(Math.round((audio.currentTime / audio.duration) * 1000));
+          }
+          syncLabel();
+          playBtn.textContent = audio.paused ? 'Play' : 'Pause';
+        });
+        audio.addEventListener('loadedmetadata', () => {
+          seek.disabled = !Number.isFinite(audio.duration);
+          syncLabel();
+        });
+
+        playBtn.addEventListener('click', () => {
+          if (audio.paused) audio.play().catch(() => {});
+          else audio.pause();
+        });
+        backBtn.addEventListener('click', () => {
+          audio.currentTime = Math.max(0, audio.currentTime - 10);
+        });
+        fwdBtn.addEventListener('click', () => {
+          if (Number.isFinite(audio.duration)) {
+            audio.currentTime = Math.min(audio.duration, audio.currentTime + 10);
+          }
+        });
+
+        fetch(src)
+          .then((r) => {
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            return r.arrayBuffer().then((buf) => {
+              const type = r.headers.get('content-type') || 'audio/mpeg';
+              return new Blob([buf], { type });
+            });
+          })
+          .then((blob) => {
+            if (!document.body.contains(wrap)) return;
+            revoke();
+            objectUrl = URL.createObjectURL(blob);
+            audio.src = objectUrl;
+            status.remove();
+            return audio.play().catch(() => {});
+          })
+          .catch((err) => {
+            status.textContent = `Could not load audio (${err.message || err})`;
+          });
         break;
       }
       case 'video': {
@@ -246,7 +374,10 @@
       card.appendChild(stamp);
     }
 
-    attachDrag(card, actions);
+    // Audio/video: no card-swipe drag — it steals seek/scrub gestures.
+    if (item.previewType !== 'audio' && item.previewType !== 'video') {
+      attachDrag(card, actions);
+    }
     return card;
   }
 
@@ -258,6 +389,7 @@
 
     function onPointerDown(e) {
       if (busy) return;
+      if (e.target.closest('audio, video, input, textarea, select, button, a, .preview')) return;
       dragging = { startX: e.clientX, startY: e.clientY, dx: 0 };
       card.setPointerCapture(e.pointerId);
     }

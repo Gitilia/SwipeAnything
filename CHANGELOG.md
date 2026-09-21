@@ -6,6 +6,10 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Navidrome adapter** (`adapters/navidrome.js`): swipe low-rated tracks
+  (0–2★ by default). Keep / keys `3`–`5` set stars; Reject adds songs to
+  playlist **Swipe Rejected (low stars)** (optional local quarantine when
+  `musicRoot` is set). Audio cards autoplay.
 - **PDF / RAW / ZIP previews** on the folder adapter: PDFs show a first-page
   Quick Look thumb (iframe fallback); camera RAW (`dng`, `cr2`, `nef`, …)
   uses QL thumbs; `.zip` lists contained files (no extract) via a zero-dep
