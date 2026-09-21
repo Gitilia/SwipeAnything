@@ -9,6 +9,17 @@ const { Adapter } = require('./base');
 
 const REJECT_PLAYLIST = 'Swipe Rejected (low stars)';
 
+/** Format seconds as m:ss (or h:mm:ss when ≥ 1 hour). */
+function formatDuration(seconds) {
+  const total = Math.max(0, Math.round(Number(seconds) || 0));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const ss = String(s).padStart(2, '0');
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${ss}`;
+  return `${m}:${ss}`;
+}
+
 /**
  * Triage low-rated Navidrome tracks (0–2★ by default): listen, bump stars,
  * skip, or reject. Reject adds the song to a recoverable "Swipe Rejected"
@@ -31,15 +42,32 @@ class NavidromeAdapter extends Adapter {
     { key: 'username', label: 'Username', type: 'text', required: true },
     { key: 'password', label: 'Password', type: 'password', required: true },
     {
+      key: 'minRating',
+      label: 'Include ratings from',
+      type: 'select',
+      default: '0',
+      options: [
+        { value: '0', label: 'Unrated / 0★' },
+        { value: '1', label: '1★' },
+        { value: '2', label: '2★' },
+      ],
+    },
+    {
       key: 'maxRating',
       label: 'Include ratings up to',
       type: 'select',
       default: '2',
       options: [
-        { value: '0', label: 'Unrated / 0★ only' },
-        { value: '1', label: 'Unrated–1★' },
-        { value: '2', label: 'Unrated–2★' },
+        { value: '0', label: 'Unrated / 0★' },
+        { value: '1', label: '1★' },
+        { value: '2', label: '2★' },
       ],
+    },
+    {
+      key: 'includeUnderSeconds',
+      label: 'Also include any song shorter than (seconds, 0 = off)',
+      type: 'number',
+      default: 0,
     },
     {
       key: 'take',
@@ -78,6 +106,10 @@ class NavidromeAdapter extends Adapter {
     this.password = settings.password || '';
     this.maxRating = Math.min(2, Math.max(0, Number(settings.maxRating)));
     if (Number.isNaN(this.maxRating)) this.maxRating = 2;
+    this.minRating = Math.min(2, Math.max(0, Number(settings.minRating)));
+    if (Number.isNaN(this.minRating)) this.minRating = 0;
+    if (this.minRating > this.maxRating) this.minRating = this.maxRating;
+    this.includeUnderSeconds = Number(settings.includeUnderSeconds) > 0 ? Number(settings.includeUnderSeconds) : 0;
     this.take = Number(settings.take) > 0 ? Number(settings.take) : 150;
     this.musicRoot = settings.musicRoot ? path.resolve(String(settings.musicRoot)) : '';
     this.trashDirName = String(settings.trashDirName || '.swipe-music-trash').replace(/[/\\]/g, '') || '.swipe-music-trash';
@@ -194,10 +226,27 @@ class NavidromeAdapter extends Adapter {
   }
 
   /**
-   * Songs with no annotation sort first when ordered by rating ASC (rating=null),
-   * then 0, 1, 2… Stop once we pass maxRating.
+   * Load songs with ratings in [minRating, maxRating].
+   * Unrated (null) counts as 0 when minRating is 0.
    */
-  async _fetchLowRated() {
+  async _fetchRatingExact(rating) {
+    const out = [];
+    const page = 200;
+    let start = 0;
+    for (;;) {
+      const res = await this._api(
+        `/api/song?_start=${start}&_end=${start + page}&_sort=title&_order=ASC&rating=${rating}&missing=false`
+      );
+      const total = Number(res.headers.get('X-Total-Count') || 0);
+      const batch = await res.json();
+      out.push(...(batch || []));
+      start += page;
+      if (!batch || batch.length === 0 || start >= total) break;
+    }
+    return out;
+  }
+
+  async _fetchUnrated() {
     const out = [];
     const page = 200;
     let start = 0;
@@ -208,17 +257,56 @@ class NavidromeAdapter extends Adapter {
       const total = Number(res.headers.get('X-Total-Count') || 0);
       const batch = await res.json();
       if (!batch || batch.length === 0) break;
-      let pastMax = false;
+      let pastUnrated = false;
       for (const song of batch) {
-        const rating = song.rating == null ? 0 : Number(song.rating);
-        if (rating > this.maxRating) {
-          pastMax = true;
+        if (song.rating != null && Number(song.rating) > 0) {
+          pastUnrated = true;
           break;
         }
         out.push(song);
       }
       start += page;
-      if (pastMax || start >= total || out.length >= this.take * 4) break;
+      if (pastUnrated || start >= total) break;
+    }
+    return out;
+  }
+
+  /** Songs shorter than maxSeconds (any rating), shortest first. */
+  async _fetchUnderDuration(maxSeconds) {
+    const out = [];
+    const page = 200;
+    let start = 0;
+    for (;;) {
+      const res = await this._api(
+        `/api/song?_start=${start}&_end=${start + page}&_sort=duration&_order=ASC&missing=false`
+      );
+      const total = Number(res.headers.get('X-Total-Count') || 0);
+      const batch = await res.json();
+      if (!batch || batch.length === 0) break;
+      let past = false;
+      for (const song of batch) {
+        const dur = Number(song.duration) || 0;
+        if (dur <= 0) continue;
+        if (dur >= maxSeconds) {
+          past = true;
+          break;
+        }
+        out.push(song);
+      }
+      start += page;
+      if (past || start >= total) break;
+    }
+    return out;
+  }
+
+  async _fetchLowRated() {
+    const out = [];
+    if (this.minRating === 0) {
+      out.push(...(await this._fetchUnrated()));
+      out.push(...(await this._fetchRatingExact(0)));
+    }
+    for (let r = Math.max(1, this.minRating); r <= this.maxRating; r += 1) {
+      out.push(...(await this._fetchRatingExact(r)));
     }
     return out;
   }
@@ -237,14 +325,50 @@ class NavidromeAdapter extends Adapter {
 
   async list() {
     const rejected = await this._rejectedIds();
-    const songs = await this._fetchLowRated();
+    const byId = new Map();
+    for (const song of await this._fetchLowRated()) {
+      byId.set(song.id, song);
+    }
+    if (this.includeUnderSeconds > 0) {
+      for (const song of await this._fetchUnderDuration(this.includeUnderSeconds)) {
+        byId.set(song.id, song);
+      }
+    }
+
+    const songs = [...byId.values()].sort((a, b) => {
+      const da = Number(a.duration) || 0;
+      const db = Number(b.duration) || 0;
+      const shortA = this.includeUnderSeconds > 0 && da > 0 && da < this.includeUnderSeconds ? 0 : 1;
+      const shortB = this.includeUnderSeconds > 0 && db > 0 && db < this.includeUnderSeconds ? 0 : 1;
+      if (shortA !== shortB) return shortA - shortB;
+      // Known short first; unknown duration (0/missing) last within a band
+      const knownA = da > 0 ? 0 : 1;
+      const knownB = db > 0 ? 0 : 1;
+      if (shortA === 0 && knownA !== knownB) return knownA - knownB;
+      const ra = a.rating == null ? -1 : Number(a.rating);
+      const rb = b.rating == null ? -1 : Number(b.rating);
+      if (ra !== rb) return ra - rb;
+      if (da !== db) return (da || 1e9) - (db || 1e9);
+      return String(a.title || '').localeCompare(String(b.title || ''));
+    });
+
     const items = [];
     for (const song of songs) {
       if (rejected.has(song.id)) continue;
       const rating = song.rating == null ? 0 : Number(song.rating);
-      if (rating > this.maxRating) continue;
+      const durSec = Number(song.duration) || 0;
+      const inRating = rating >= this.minRating && rating <= this.maxRating;
+      // duration 0/missing is NOT "short" — bad tags, not under-a-minute tracks
+      // Short tracks are included at any rating. The rating window only
+      // applies to the normal queue, not the under-duration union.
+      const shortOk =
+        this.includeUnderSeconds > 0 &&
+        durSec > 0 &&
+        durSec < this.includeUnderSeconds;
+      if (!inRating && !shortOk) continue;
+
       this._byId.set(song.id, song);
-      const dur = song.duration ? `${Math.round(song.duration)}s` : undefined;
+      const dur = durSec > 0 ? formatDuration(durSec) : undefined;
       items.push({
         id: song.id,
         title: song.title || song.path || song.id,
@@ -252,7 +376,7 @@ class NavidromeAdapter extends Adapter {
         previewType: 'audio',
         meta: {
           rating: song.rating == null ? 'unrated' : `${rating}★`,
-          duration: dur,
+          ...(dur ? { duration: dur } : {}),
           year: song.year || undefined,
           path: song.path || undefined,
         },
@@ -262,21 +386,39 @@ class NavidromeAdapter extends Adapter {
     return items;
   }
 
-  async streamPreview(itemId, res) {
+  async streamPreview(itemId, res, req) {
     const auth = this._subsonicAuth();
     const qs = new URLSearchParams({ ...auth, id: itemId });
     const url = `${this.serverUrl}/rest/stream.view?${qs}`;
+    const headers = {};
+    const range = req && req.headers && req.headers.range;
+    if (range) headers.Range = range;
     let upstream;
     try {
-      upstream = await fetch(url);
+      upstream = await fetch(url, { headers });
     } catch {
       return false;
     }
-    if (!upstream.ok || !upstream.body) return false;
-    res.set('Content-Type', upstream.headers.get('content-type') || 'audio/mpeg');
+    // 200 full body or 206 partial (needed so <audio> can scrub)
+    if (!(upstream.status === 200 || upstream.status === 206) || !upstream.body) return false;
+    res.status(upstream.status);
+    const type = upstream.headers.get('content-type') || 'audio/mpeg';
+    res.set('Content-Type', type);
+    res.set('Accept-Ranges', upstream.headers.get('accept-ranges') || 'bytes');
+    res.set('Cache-Control', 'no-store');
     const len = upstream.headers.get('content-length');
     if (len) res.set('Content-Length', len);
-    Readable.fromWeb(upstream.body).pipe(res);
+    const cr = upstream.headers.get('content-range');
+    if (cr) res.set('Content-Range', cr);
+    const nodeStream = Readable.fromWeb(upstream.body);
+    nodeStream.on('error', () => {
+      if (!res.headersSent) res.status(502);
+      res.end();
+    });
+    res.on('close', () => {
+      nodeStream.destroy();
+    });
+    nodeStream.pipe(res);
     return true;
   }
 
@@ -292,7 +434,7 @@ class NavidromeAdapter extends Adapter {
       { label: 'Album', value: song.album },
       { label: 'Title', value: song.title },
       { label: 'Rating', value: song.rating == null ? '0 (unrated)' : `${song.rating}★` },
-      { label: 'Duration', value: song.duration ? `${Math.round(song.duration)}s` : undefined },
+      { label: 'Duration', value: song.duration != null ? formatDuration(song.duration) : undefined },
       { label: 'Year', value: song.year },
       { label: 'Path', value: song.path },
       { label: 'Id', value: song.id },
@@ -423,8 +565,10 @@ class NavidromeAdapter extends Adapter {
   }
 
   describeSource() {
-    return `${this.serverUrl} (Navidrome ≤${this.maxRating}★)`;
+    const short =
+      this.includeUnderSeconds > 0 ? ` + <${this.includeUnderSeconds}s` : '';
+    return `${this.serverUrl} (Navidrome ${this.minRating}–${this.maxRating}★${short})`;
   }
 }
 
-module.exports = { NavidromeAdapter, REJECT_PLAYLIST };
+module.exports = { NavidromeAdapter, REJECT_PLAYLIST, formatDuration };

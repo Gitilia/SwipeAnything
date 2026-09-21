@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { NavidromeAdapter, REJECT_PLAYLIST } = require('../adapters/navidrome');
+const { NavidromeAdapter, REJECT_PLAYLIST, formatDuration } = require('../adapters/navidrome');
 
 async function withMockFetch(handler, fn) {
   const original = global.fetch;
@@ -77,15 +77,24 @@ test('list() loads ≤maxRating songs and skips reject-playlist tracks', async (
       }
       if (url.includes('/api/song') && url.includes('_sort=rating')) {
         return jsonResponse(
+          [{ id: 'unrated', title: 'Bare', artist: 'X', album: 'Y', rating: null, duration: 30 }],
+          true,
+          200,
+          { total: 1 }
+        );
+      }
+      if (url.includes('/api/song') && url.includes('rating=0')) {
+        return jsonResponse([], true, 200, { total: 0 });
+      }
+      if (url.includes('/api/song') && url.includes('rating=1')) {
+        return jsonResponse(
           [
-            { id: 'unrated', title: 'Bare', artist: 'X', album: 'Y', rating: null, duration: 30 },
             { id: 'skip-me', title: 'Nope', artist: 'A', album: 'B', rating: 1, duration: 10 },
             { id: 'keep-me', title: 'Song', artist: 'Artist', album: 'Album', rating: 1, duration: 120 },
-            { id: 'too-high', title: 'Good', artist: 'Z', album: 'Z', rating: 3, duration: 90 },
           ],
           true,
           200,
-          { total: 4 }
+          { total: 2 }
         );
       }
       return jsonResponse({}, false, 404);
@@ -95,6 +104,7 @@ test('list() loads ≤maxRating songs and skips reject-playlist tracks', async (
         serverUrl: 'https://navi.example.com',
         username: 'u',
         password: 'p',
+        minRating: '0',
         maxRating: '1',
         take: 50,
       });
@@ -107,6 +117,87 @@ test('list() loads ≤maxRating songs and skips reject-playlist tracks', async (
       assert.equal(items[1].previewType, 'audio');
       assert.equal(items[1].meta.rating, '1★');
       assert.match(items[1].subtitle, /Artist/);
+    }
+  );
+});
+
+test('list() with minRating=1 skips unrated', async () => {
+  await withMockFetch(
+    (url) => {
+      if (url.endsWith('/auth/login')) return jsonResponse({ token: 't' });
+      if (url.endsWith('/api/playlist')) return jsonResponse([{ id: 'pl-reject', name: REJECT_PLAYLIST }]);
+      if (url.includes('/api/playlist/pl-reject/tracks')) return jsonResponse([]);
+      if (url.includes('rating=1')) {
+        return jsonResponse([{ id: 'one', title: 'One', artist: 'A', album: 'B', rating: 1, duration: 10 }], true, 200, { total: 1 });
+      }
+      if (url.includes('rating=2')) {
+        return jsonResponse([{ id: 'two', title: 'Two', artist: 'C', album: 'D', rating: 2, duration: 20 }], true, 200, { total: 1 });
+      }
+      return jsonResponse({}, false, 404);
+    },
+    async () => {
+      const adapter = new NavidromeAdapter({
+        serverUrl: 'https://navi.example.com',
+        username: 'u',
+        password: 'p',
+        minRating: '1',
+        maxRating: '2',
+        take: 50,
+      });
+      await adapter.init();
+      const items = await adapter.list();
+      assert.deepEqual(
+        items.map((i) => i.id),
+        ['one', 'two']
+      );
+    }
+  );
+});
+
+test('list() with includeUnderSeconds unions short high-rated tracks', async () => {
+  await withMockFetch(
+    (url) => {
+      if (url.endsWith('/auth/login')) return jsonResponse({ token: 't' });
+      if (url.endsWith('/api/playlist')) return jsonResponse([{ id: 'pl-reject', name: REJECT_PLAYLIST }]);
+      if (url.includes('/api/playlist/pl-reject/tracks')) return jsonResponse([]);
+      if (url.includes('_sort=rating')) {
+        return jsonResponse([{ id: 'u', title: 'U', artist: 'A', rating: null, duration: 200 }], true, 200, { total: 1 });
+      }
+      if (url.includes('rating=0')) return jsonResponse([], true, 200, { total: 0 });
+      if (url.includes('rating=1')) {
+        return jsonResponse([{ id: 'one', title: 'One', artist: 'A', rating: 1, duration: 200 }], true, 200, { total: 1 });
+      }
+      if (url.includes('rating=2')) return jsonResponse([], true, 200, { total: 0 });
+      if (url.includes('_sort=duration')) {
+        return jsonResponse(
+          [
+            { id: 'short5', title: 'Twist', artist: 'Korn', rating: 5, duration: 51 },
+            { id: 'long', title: 'Long', artist: 'X', rating: 5, duration: 200 },
+          ],
+          true,
+          200,
+          { total: 2 }
+        );
+      }
+      return jsonResponse({}, false, 404);
+    },
+    async () => {
+      const adapter = new NavidromeAdapter({
+        serverUrl: 'https://navi.example.com',
+        username: 'u',
+        password: 'p',
+        minRating: '0',
+        maxRating: '2',
+        includeUnderSeconds: 60,
+        take: 50,
+      });
+      await adapter.init();
+      const items = await adapter.list();
+      const ids = items.map((i) => i.id);
+      assert.ok(ids.includes('u'));
+      assert.ok(ids.includes('one'));
+      assert.ok(ids.includes('short5'));
+      assert.ok(!ids.includes('long'));
     }
   );
 });
@@ -146,6 +237,12 @@ test('applyAction rate/keep calls setRating; reject adds to playlist', async () 
       assert.ok(calls.some((c) => c.url.includes('songIdToAdd=s1')));
     }
   );
+});
+
+test('formatDuration uses m:ss (and h:mm:ss when needed)', () => {
+  assert.equal(formatDuration(0), '0:00');
+  assert.equal(formatDuration(65), '1:05');
+  assert.equal(formatDuration(3723), '1:02:03');
 });
 
 test('streamPreview requests Subsonic stream.view for the song id', async () => {

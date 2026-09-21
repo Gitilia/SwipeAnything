@@ -173,7 +173,7 @@ app.get('/api/preview/:itemId', async (req, res) => {
   const s = await ensureSession().catch(() => null);
   if (!s) return res.status(409).end();
   try {
-    const handled = await s.adapter.streamPreview(req.params.itemId, res);
+    const handled = await s.adapter.streamPreview(req.params.itemId, res, req);
     if (!handled) res.status(404).end();
   } catch (err) {
     res.status(400).json({ error: err.message });

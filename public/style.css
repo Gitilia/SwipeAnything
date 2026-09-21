@@ -193,6 +193,50 @@ h1 {
   justify-content: center;
 }
 
+.card .preview.audio-preview {
+  flex-direction: column;
+  gap: 10px;
+  max-height: none;
+  overflow: visible;
+  background: transparent;
+  align-items: stretch;
+}
+
+.card .preview.audio-preview .audio-status,
+.card .preview.audio-preview .audio-time {
+  color: var(--sub);
+  font-size: 12px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.card .preview.audio-preview .audio-seek {
+  width: 100%;
+  accent-color: var(--accent, #6cf);
+  cursor: pointer;
+}
+
+.card .preview.audio-preview .audio-btns {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.card .preview.audio-preview .audio-btns button {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border, #333);
+  background: var(--panel, #1a1a1c);
+  color: inherit;
+  cursor: pointer;
+}
+
+.card .preview.audio-preview audio {
+  display: none;
+}
+
 .card .preview img,
 .card .preview video {
   width: 100%;
